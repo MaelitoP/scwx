@@ -24,6 +24,13 @@ pub fn open(placement: Placement, title: &str, argv: &[OsString]) -> Result<()> 
             .map(|arg| arg.to_string_lossy().into_owned())
             .collect::<Vec<_>>(),
     );
+    // Hold the pane open on failure; tmux destroys it as soon as the
+    // command exits, which would hide the error.
+    let command = format!(
+        "{command} || {{ status=$?; \
+         printf '\\n[scwx] exited with status %d - press enter to close\\n' \"$status\"; \
+         read -r _; }}"
+    );
 
     let mut tmux = Command::new("tmux");
     match placement {
