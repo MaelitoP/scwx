@@ -35,12 +35,41 @@ impl<'a> ResourceView<'a> {
     }
 }
 
-pub fn run(cli: &Cli, config: &Config, json: bool, names: bool) -> Result<()> {
-    let inventory = cache::load_or_fetch(cli.refresh, config)?;
+#[derive(Debug, Clone, Copy)]
+pub struct NameFilter {
+    pub servers: bool,
+    pub databases: bool,
+    pub forwardable: bool,
+}
+
+pub fn run(cli: &Cli, config: &Config, json: bool, filter: NameFilter, cached: bool) -> Result<()> {
+    let inventory = if cached {
+        match cache::load_ignoring_ttl()? {
+            Some(inventory) => inventory,
+            None => return Ok(()),
+        }
+    } else {
+        cache::load_or_fetch(cli.refresh, config)?
+    };
     let resources = inventory.filtered(cli.env, &config.tags);
 
-    if names {
+    if filter.servers {
         for resource in resources.iter().filter(|r| r.kind.is_server()) {
+            println!("{}", resource.display_name(&config.naming));
+        }
+        return Ok(());
+    }
+    if filter.databases {
+        for name in crate::commands::db::names(&resources, config)? {
+            println!("{name}");
+        }
+        return Ok(());
+    }
+    if filter.forwardable {
+        for resource in resources
+            .iter()
+            .filter(|r| r.port_forward_enabled(&config.tags))
+        {
             println!("{}", resource.display_name(&config.naming));
         }
         return Ok(());

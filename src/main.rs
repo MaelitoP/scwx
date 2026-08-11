@@ -21,7 +21,20 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = Config::load(&paths::config_file()?)?;
     match cli.command {
-        Command::Ls { json, names } => commands::ls::run(&cli, &config, json, names),
+        Command::Ls {
+            json,
+            names,
+            db_names,
+            pf_names,
+            cached,
+        } => {
+            let filter = commands::ls::NameFilter {
+                servers: names,
+                databases: db_names,
+                forwardable: pf_names,
+            };
+            commands::ls::run(&cli, &config, json, filter, cached)
+        }
         Command::Connect { ref query } => commands::connect::run(&cli, &config, query.as_deref()),
         Command::Db { ref name } => commands::db::run(&cli, &config, name.as_deref()),
         Command::Pf {

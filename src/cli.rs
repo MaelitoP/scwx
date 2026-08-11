@@ -31,6 +31,15 @@ pub enum Command {
         /// Output connectable server names only, one per line
         #[arg(long)]
         names: bool,
+        /// Output database names only, one per line
+        #[arg(long, hide = true, conflicts_with = "names")]
+        db_names: bool,
+        /// Output port-forwardable resource names only, one per line
+        #[arg(long, hide = true, conflicts_with_all = ["names", "db_names"])]
+        pf_names: bool,
+        /// Read only the cache; output nothing when it is missing
+        #[arg(long, hide = true)]
+        cached: bool,
     },
     /// Pick a server and open an SSH session through the bastion
     Connect {

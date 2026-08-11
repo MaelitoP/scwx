@@ -49,6 +49,12 @@ pub fn store(path: &Path, inventory: &Inventory, now: SystemTime) -> Result<()> 
     fs::rename(&temp, path).with_context(|| format!("replacing cache {}", path.display()))
 }
 
+/// Cache-only read for completion helpers: any age is fine, never fetch.
+pub fn load_ignoring_ttl() -> Result<Option<Inventory>> {
+    let path = paths::cache_file()?;
+    Ok(load_fresh(&path, Duration::MAX, SystemTime::now()))
+}
+
 pub fn load_or_fetch(refresh: bool, config: &Config) -> Result<Inventory> {
     let path = paths::cache_file()?;
     let ttl = Duration::from_secs(config.cache.ttl_seconds);

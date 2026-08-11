@@ -67,6 +67,24 @@ pub fn run(cli: &Cli, config: &Config, name: Option<&str>) -> Result<()> {
     connect(target, env, config, &bastion)
 }
 
+/// Unique database keys for the configured default env, for shell completion.
+pub fn names(resources: &[&Resource], config: &Config) -> Result<Vec<String>> {
+    let env: Environment = config
+        .db
+        .default_env
+        .parse()
+        .with_context(|| format!("invalid db.default_env '{}'", config.db.default_env))?;
+    let mut names: Vec<String> = resources
+        .iter()
+        .filter(|resource| is_database(resource, config))
+        .filter(|resource| resource.env(&config.tags) == Some(env))
+        .map(|resource| db_key(resource, config, env))
+        .collect();
+    names.sort();
+    names.dedup();
+    Ok(names)
+}
+
 fn target_env(cli: &Cli, config: &Config) -> Result<Environment> {
     match cli.env {
         Some(env) => Ok(env),
