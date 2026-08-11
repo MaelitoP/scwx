@@ -2,11 +2,13 @@ mod cache;
 mod cli;
 mod commands;
 mod config;
-#[allow(dead_code)] // consumed progressively while commands are stubs
+mod exec;
 mod inventory;
-#[allow(dead_code)] // consumed progressively while commands are stubs
 mod paths;
+mod picker;
 mod scw;
+mod ssh;
+mod tmux;
 
 use anyhow::Result;
 use clap::Parser;

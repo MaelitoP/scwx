@@ -117,10 +117,12 @@ impl Resource {
             .and_then(|value| value.parse().ok())
     }
 
+    #[allow(dead_code)] // consumed when db and pf land
     pub fn port_forward_enabled(&self, tags: &TagsSection) -> bool {
         self.tags.contains(&tags.port_forward_enabled)
     }
 
+    #[allow(dead_code)] // consumed when db and pf land
     pub fn port_forward_port(&self, tags: &TagsSection) -> Option<u16> {
         self.tags
             .iter()
@@ -129,10 +131,12 @@ impl Resource {
             .or(self.endpoint_port)
     }
 
+    #[allow(dead_code)] // consumed when db and pf land
     pub fn is_mysql(&self, tags: &TagsSection) -> bool {
         self.tags.contains(&tags.mysql)
     }
 
+    #[allow(dead_code)] // consumed when db and pf land
     pub fn is_master(&self, tags: &TagsSection) -> bool {
         self.tags.contains(&tags.master)
     }

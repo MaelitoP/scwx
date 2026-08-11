@@ -28,6 +28,7 @@ pub fn cache_file() -> Result<PathBuf> {
     Ok(xdg_dir("XDG_CACHE_HOME", ".cache")?.join("scwx/inventory.json"))
 }
 
+#[allow(dead_code)] // consumed when pf lands
 pub fn sockets_dir() -> Result<PathBuf> {
     Ok(xdg_dir("XDG_STATE_HOME", ".local/state")?.join("scwx/sockets"))
 }
