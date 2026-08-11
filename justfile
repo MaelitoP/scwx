@@ -11,6 +11,6 @@ release version:
     git diff --quiet || (echo "working tree is dirty" && exit 1)
     sed -i '' 's/^version = ".*"/version = "{{version}}"/' Cargo.toml
     cargo check -q
-    git commit -am "chore(release): v{{version}}"
+    git diff --quiet || git commit -am "chore(release): v{{version}}"
     git tag "v{{version}}"
     git push origin master --follow-tags
