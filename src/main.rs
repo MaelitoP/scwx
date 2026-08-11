@@ -7,6 +7,7 @@ mod inventory;
 mod paths;
 mod picker;
 mod scw;
+mod secrets;
 mod ssh;
 mod tmux;
 

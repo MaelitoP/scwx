@@ -115,6 +115,9 @@ pub struct DbSection {
     /// Database user; defaults to the OS user with dots replaced by underscores.
     pub user: Option<String>,
     pub default_env: String,
+    /// Prefixes stripped from the database key, e.g. "db-" so that
+    /// db-matched-article-1 resolves the MATCHED-ARTICLE secret.
+    pub strip_prefixes: Vec<String>,
 }
 
 impl Default for DbSection {
@@ -124,6 +127,7 @@ impl Default for DbSection {
             secret_name_template: "{db}-{user}-PWD-{env}".to_owned(),
             user: None,
             default_env: "prod".to_owned(),
+            strip_prefixes: vec!["db-".to_owned()],
         }
     }
 }
@@ -149,7 +153,6 @@ impl Config {
 #[derive(Debug, Clone)]
 pub struct Credentials {
     pub secret_key: String,
-    #[allow(dead_code)] // consumed when the db command lands
     pub default_project_id: Option<String>,
 }
 

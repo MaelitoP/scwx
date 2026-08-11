@@ -2,13 +2,14 @@
 name = "scwx"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 description = "Fast SSH, database and port-forward access to Scaleway infrastructure"
 repository = "https://github.com/MaelitoP/scwx"
 license = "MIT"
 
 [dependencies]
 anyhow = "1.0.104"
+base64 = "0.23.1"
 clap = { version = "4.6.6", features = ["derive"] }
 clap_complete = "4.6.9"
 serde = { version = "1.0.229", features = ["derive"] }

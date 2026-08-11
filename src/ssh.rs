@@ -68,7 +68,6 @@ pub fn session_argv(host: &str, config: &Config, bastion: &Bastion) -> Result<Ve
     Ok(argv.into_iter().map(OsString::from).collect())
 }
 
-#[allow(dead_code)] // consumed when db and pf land
 pub struct Tunnel<'a> {
     pub local_port: u16,
     pub target_host: &'a str,
@@ -77,7 +76,6 @@ pub struct Tunnel<'a> {
 
 /// Forward through the bastion itself: -L local:target:remote on the
 /// bastion connection, for targets the bastion can reach directly.
-#[allow(dead_code)] // consumed when db and pf land
 pub fn tunnel_argv(
     tunnel: &Tunnel<'_>,
     config: &Config,
