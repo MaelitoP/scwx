@@ -1,7 +1,8 @@
 use anyhow::{Result, bail};
 
 use crate::cli::Cli;
+use crate::config::Config;
 
-pub fn run(_cli: &Cli, _name: Option<&str>) -> Result<()> {
+pub fn run(_cli: &Cli, _config: &Config, _name: Option<&str>) -> Result<()> {
     bail!("not implemented yet")
 }
