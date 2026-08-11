@@ -1,4 +1,6 @@
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
+
+use crate::inventory::Environment;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -16,7 +18,7 @@ pub struct Cli {
 
     /// Filter resources by environment
     #[arg(long, global = true, value_enum)]
-    pub env: Option<Env>,
+    pub env: Option<Environment>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -70,11 +72,4 @@ pub enum PfCommand {
     Ls,
     /// Stop a tunnel (all tunnels when no name is given)
     Stop { name: Option<String> },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub enum Env {
-    Prod,
-    Beta,
-    Dev,
 }

@@ -3,6 +3,8 @@ mod commands;
 #[allow(dead_code)] // consumed progressively while commands are stubs
 mod config;
 #[allow(dead_code)] // consumed progressively while commands are stubs
+mod inventory;
+#[allow(dead_code)] // consumed progressively while commands are stubs
 mod paths;
 
 use anyhow::Result;
