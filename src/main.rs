@@ -6,6 +6,8 @@ mod config;
 mod inventory;
 #[allow(dead_code)] // consumed progressively while commands are stubs
 mod paths;
+#[allow(dead_code)] // consumed progressively while commands are stubs
+mod scw;
 
 use anyhow::Result;
 use clap::Parser;
