@@ -117,7 +117,6 @@ impl Resource {
             .and_then(|value| value.parse().ok())
     }
 
-    #[allow(dead_code)] // consumed when db and pf land
     pub fn port_forward_enabled(&self, tags: &TagsSection) -> bool {
         self.tags.contains(&tags.port_forward_enabled)
     }

@@ -61,15 +61,53 @@ const KEY_LEGEND: &str = "enter=window  ctrl-s=split  ctrl-v=vsplit  ctrl-o=here
 /// Runs fzf over pre-rendered lines; returns the picked line index and the
 /// key-selected outcome, or None when the picker is cancelled.
 pub fn pick(lines: &[String], header: &str, initial_query: Option<&str>) -> Result<Option<Pick>> {
+    let Some(stdout) = run_fzf(lines, header, initial_query, true)? else {
+        return Ok(None);
+    };
+    parse_output(&stdout).map(Some)
+}
+
+/// Picker without placement keys; returns the picked line index.
+pub fn pick_plain(
+    lines: &[String],
+    header: &str,
+    initial_query: Option<&str>,
+) -> Result<Option<usize>> {
+    let Some(stdout) = run_fzf(lines, header, initial_query, false)? else {
+        return Ok(None);
+    };
+    let index = stdout
+        .lines()
+        .next()
+        .context("fzf returned no selection")?
+        .split('\t')
+        .next()
+        .context("fzf selection has no index")?
+        .parse()
+        .context("fzf selection index is not a number")?;
+    Ok(Some(index))
+}
+
+fn run_fzf(
+    lines: &[String],
+    header: &str,
+    initial_query: Option<&str>,
+    with_placement_keys: bool,
+) -> Result<Option<String>> {
     let mut command = Command::new("fzf");
     command
         .arg("--delimiter=\t")
         .arg("--with-nth=2..")
-        .arg("--expect=ctrl-s,ctrl-v,ctrl-o")
-        .arg(format!("--header={header}\n{KEY_LEGEND}"))
         .arg("--no-multi")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped());
+    if with_placement_keys {
+        command
+            .arg("--expect=ctrl-s,ctrl-v,ctrl-o")
+            .arg(format!("--header={header}\n{KEY_LEGEND}"));
+    } else {
+        command.arg(format!("--header={header}"));
+    }
     if let Some(query) = initial_query {
         command.arg(format!("--query={query}"));
     }
@@ -94,7 +132,7 @@ pub fn pick(lines: &[String], header: &str, initial_query: Option<&str>) -> Resu
     }
 
     let stdout = String::from_utf8(output.stdout).context("fzf output is not utf-8")?;
-    parse_output(&stdout).map(Some)
+    Ok(Some(stdout))
 }
 
 fn parse_output(stdout: &str) -> Result<Pick> {

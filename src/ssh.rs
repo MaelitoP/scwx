@@ -105,7 +105,6 @@ pub fn tunnel_argv(
 }
 
 /// Forward to a server's own loopback, jumping through the bastion.
-#[allow(dead_code)] // consumed when db and pf land
 pub fn server_tunnel_argv(
     tunnel: &Tunnel<'_>,
     config: &Config,
@@ -125,6 +124,20 @@ pub fn server_tunnel_argv(
         format!("{}@{}", config.ssh.user, tunnel.target_host),
     ]);
     Ok(argv.into_iter().map(OsString::from).collect())
+}
+
+/// Turns a foreground tunnel into a backgrounded control-master so it can
+/// be checked and stopped later via ssh -S <socket> -O check/exit.
+pub fn with_control_socket(mut argv: Vec<OsString>, socket: &std::path::Path) -> Vec<OsString> {
+    let destination = argv.pop().expect("tunnel argv ends with a destination");
+    argv.extend([
+        OsString::from("-f"),
+        OsString::from("-M"),
+        OsString::from("-S"),
+        socket.into(),
+    ]);
+    argv.push(destination);
+    argv
 }
 
 #[cfg(test)]
@@ -191,6 +204,26 @@ mod tests {
         assert!(argv.contains(&"ExitOnForwardFailure=yes".to_owned()));
         assert_eq!(argv.last().unwrap(), "bastion@5.6.7.8");
         assert!(!argv.iter().any(|arg| arg.starts_with("ProxyCommand=")));
+    }
+
+    #[test]
+    fn control_socket_options_are_inserted_before_the_destination() {
+        let tunnel = Tunnel {
+            local_port: 13306,
+            target_host: "172.16.8.11",
+            remote_port: 3306,
+        };
+        let argv = tunnel_argv(&tunnel, &Config::default(), &bastion()).unwrap();
+        let argv = as_strings(with_control_socket(
+            argv,
+            std::path::Path::new("/tmp/t.sock"),
+        ));
+
+        assert_eq!(argv.last().unwrap(), "bastion@5.6.7.8");
+        let socket_flag = argv.iter().position(|arg| arg == "-S").unwrap();
+        assert_eq!(argv[socket_flag + 1], "/tmp/t.sock");
+        assert!(argv.contains(&"-f".to_owned()));
+        assert!(argv.contains(&"-M".to_owned()));
     }
 
     #[test]
