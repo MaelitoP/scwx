@@ -12,5 +12,5 @@ release version:
     sed -i '' 's/^version = ".*"/version = "{{version}}"/' Cargo.toml
     cargo check -q
     git diff --quiet || git commit -am "chore(release): v{{version}}"
-    git tag "v{{version}}"
+    git tag -m "v{{version}}" "v{{version}}"
     git push origin master --follow-tags
