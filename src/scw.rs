@@ -427,6 +427,8 @@ fn collect_resources(
             Err(error) if is_auth_error(&error) => {
                 return Err(error).with_context(|| format!("scaleway denied access ({label})"));
             }
+            // 501: the product does not exist in this zone.
+            Err(ureq::Error::StatusCode(501)) => {}
             Err(error) => eprintln!("warning: skipping {label}: {error}"),
         }
     }

@@ -15,6 +15,19 @@ pub struct Config {
     pub tags: TagsSection,
     pub db: DbSection,
     pub naming: NamingSection,
+    pub cache: CacheSection,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct CacheSection {
+    pub ttl_seconds: u64,
+}
+
+impl Default for CacheSection {
+    fn default() -> Self {
+        Self { ttl_seconds: 300 }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -136,6 +149,7 @@ impl Config {
 #[derive(Debug, Clone)]
 pub struct Credentials {
     pub secret_key: String,
+    #[allow(dead_code)] // consumed when the db command lands
     pub default_project_id: Option<String>,
 }
 

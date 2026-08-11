@@ -1,8 +1,99 @@
-use anyhow::{Result, bail};
+use anyhow::Result;
+use serde::Serialize;
 
+use crate::cache;
 use crate::cli::Cli;
 use crate::config::Config;
+use crate::inventory::{Environment, Resource};
 
-pub fn run(_cli: &Cli, _config: &Config, _json: bool, _names: bool) -> Result<()> {
-    bail!("not implemented yet")
+#[derive(Debug, Serialize)]
+struct ResourceView<'a> {
+    kind: &'static str,
+    id: &'a str,
+    name: &'a str,
+    display_name: String,
+    zone: &'a str,
+    env: Option<Environment>,
+    tags: &'a [String],
+    endpoint_ip: Option<&'a str>,
+    endpoint_port: Option<u16>,
+}
+
+impl<'a> ResourceView<'a> {
+    fn new(resource: &'a Resource, config: &Config) -> Self {
+        Self {
+            kind: resource.kind.label(),
+            id: &resource.id,
+            name: &resource.name,
+            display_name: resource.display_name(&config.naming),
+            zone: &resource.zone,
+            env: resource.env(&config.tags),
+            tags: &resource.tags,
+            endpoint_ip: resource.endpoint_ip.as_deref(),
+            endpoint_port: resource.endpoint_port,
+        }
+    }
+}
+
+pub fn run(cli: &Cli, config: &Config, json: bool, names: bool) -> Result<()> {
+    let inventory = cache::load_or_fetch(cli.refresh, config)?;
+    let resources = inventory.filtered(cli.env, &config.tags);
+
+    if names {
+        for resource in resources.iter().filter(|r| r.kind.is_server()) {
+            println!("{}", resource.display_name(&config.naming));
+        }
+        return Ok(());
+    }
+
+    let views: Vec<ResourceView<'_>> = resources
+        .iter()
+        .map(|resource| ResourceView::new(resource, config))
+        .collect();
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&views)?);
+        return Ok(());
+    }
+
+    print_table(&views);
+    Ok(())
+}
+
+fn print_table(views: &[ResourceView<'_>]) {
+    let rows: Vec<[String; 5]> = views
+        .iter()
+        .map(|view| {
+            [
+                view.display_name.clone(),
+                view.kind.to_owned(),
+                view.env.map(|env| env.to_string()).unwrap_or_default(),
+                view.zone.to_owned(),
+                view.endpoint_ip.unwrap_or_default().to_owned(),
+            ]
+        })
+        .collect();
+
+    let header = ["NAME", "KIND", "ENV", "ZONE", "IP"];
+    let mut widths = header.map(str::len);
+    for row in &rows {
+        for (width, cell) in widths.iter_mut().zip(row) {
+            *width = (*width).max(cell.len());
+        }
+    }
+
+    print_row(&header.map(str::to_owned), &widths);
+    for row in &rows {
+        print_row(row, &widths);
+    }
+}
+
+fn print_row(cells: &[String; 5], widths: &[usize; 5]) {
+    let line = cells
+        .iter()
+        .zip(widths)
+        .map(|(cell, width)| format!("{cell:<width$}"))
+        .collect::<Vec<_>>()
+        .join("  ");
+    println!("{}", line.trim_end());
 }

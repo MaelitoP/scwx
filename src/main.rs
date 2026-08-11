@@ -1,12 +1,11 @@
+mod cache;
 mod cli;
 mod commands;
-#[allow(dead_code)] // consumed progressively while commands are stubs
 mod config;
 #[allow(dead_code)] // consumed progressively while commands are stubs
 mod inventory;
 #[allow(dead_code)] // consumed progressively while commands are stubs
 mod paths;
-#[allow(dead_code)] // consumed progressively while commands are stubs
 mod scw;
 
 use anyhow::Result;
