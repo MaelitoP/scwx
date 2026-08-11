@@ -36,7 +36,19 @@ fn main() -> Result<()> {
             commands::ls::run(&cli, &config, json, filter, cached)
         }
         Command::Connect { ref query } => commands::connect::run(&cli, &config, query.as_deref()),
-        Command::Db { ref name } => commands::db::run(&cli, &config, name.as_deref()),
+        Command::Db {
+            ref name,
+            ref execute,
+            ref mysql_args,
+        } => commands::db::run(
+            &cli,
+            &config,
+            name.as_deref(),
+            commands::db::MysqlOptions {
+                execute: execute.as_deref(),
+                extra_args: mysql_args,
+            },
+        ),
         Command::Pf {
             ref command,
             ref query,

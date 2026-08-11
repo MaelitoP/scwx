@@ -50,6 +50,12 @@ pub enum Command {
     Db {
         /// Database name; picks interactively when omitted or ambiguous
         name: Option<String>,
+        /// Run a single query and exit (mysql --execute)
+        #[arg(short = 'e', long)]
+        execute: Option<String>,
+        /// Extra arguments passed to mysql, e.g. -- --table
+        #[arg(last = true)]
+        mysql_args: Vec<String>,
     },
     /// Manage port-forward tunnels
     Pf {

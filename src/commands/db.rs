@@ -1,7 +1,7 @@
 use std::env;
 use std::ffi::OsString;
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -13,7 +13,13 @@ use crate::inventory::{Bastion, Environment, Resource, ResourceKind};
 use crate::picker::{self, PickOutcome};
 use crate::{cache, paths, scw, secrets, ssh, tmux};
 
-pub fn run(cli: &Cli, config: &Config, name: Option<&str>) -> Result<()> {
+#[derive(Debug, Clone, Copy)]
+pub struct MysqlOptions<'a> {
+    pub execute: Option<&'a str>,
+    pub extra_args: &'a [String],
+}
+
+pub fn run(cli: &Cli, config: &Config, name: Option<&str>, mysql: MysqlOptions<'_>) -> Result<()> {
     let env = target_env(cli, config)?;
     let inventory = cache::load_or_fetch(cli.refresh, config)?;
     let bastion = inventory.bastion()?.clone();
@@ -33,7 +39,7 @@ pub fn run(cli: &Cli, config: &Config, name: Option<&str>) -> Result<()> {
             .filter(|resource| resource.name == name || db_key(resource, config, env) == name)
             .collect();
         if let [target] = exact.as_slice() {
-            return connect(target, env, config, &bastion);
+            return connect(target, env, config, &bastion, mysql);
         }
     }
 
@@ -53,6 +59,15 @@ pub fn run(cli: &Cli, config: &Config, name: Option<&str>) -> Result<()> {
                 .into_iter()
                 .map(OsString::from),
         )
+        .chain(
+            mysql
+                .execute
+                .iter()
+                .flat_map(|query| ["--execute", query])
+                .map(OsString::from),
+        )
+        .chain(std::iter::once(OsString::from("--")))
+        .chain(mysql.extra_args.iter().map(OsString::from))
         .collect();
         let placement = match pick.outcome {
             PickOutcome::Window => tmux::Placement::Window,
@@ -64,7 +79,7 @@ pub fn run(cli: &Cli, config: &Config, name: Option<&str>) -> Result<()> {
         return tmux::open(placement, &title, &argv);
     }
 
-    connect(target, env, config, &bastion)
+    connect(target, env, config, &bastion, mysql)
 }
 
 /// Unique database keys for the configured default env, for shell completion.
@@ -178,6 +193,7 @@ fn connect(
     env: Environment,
     config: &Config,
     bastion: &Bastion,
+    mysql: MysqlOptions<'_>,
 ) -> Result<()> {
     let host = resource
         .endpoint_ip
@@ -210,23 +226,17 @@ fn connect(
         remote_port,
     };
     let argv = ssh::tunnel_argv(&tunnel, config, bastion)?;
+    // The tunnel must not read stdin: piped queries belong to mysql.
     let mut tunnel_child = Command::new(&argv[0])
         .args(&argv[1..])
+        .stdin(Stdio::null())
         .spawn()
         .context("starting ssh tunnel")?;
 
     let result = wait_for_port(&mut tunnel_child, local_port).and_then(|()| {
         eprintln!("connected to {key} ({env}) via 127.0.0.1:{local_port}");
         Command::new("mysql")
-            .args([
-                "-h",
-                "127.0.0.1",
-                "-P",
-                &local_port.to_string(),
-                "-u",
-                &user,
-                &key,
-            ])
+            .args(mysql_argv(local_port, &user, &key, mysql))
             .env("MYSQL_PWD", &password)
             .status()
             .context("running mysql (is it installed?)")
@@ -238,6 +248,24 @@ fn connect(
     let status = result?;
     ensure!(status.success(), "mysql exited with {status}");
     Ok(())
+}
+
+fn mysql_argv(local_port: u16, user: &str, schema: &str, mysql: MysqlOptions<'_>) -> Vec<String> {
+    let mut argv = vec![
+        "-h".to_owned(),
+        "127.0.0.1".to_owned(),
+        "-P".to_owned(),
+        local_port.to_string(),
+        "-u".to_owned(),
+        user.to_owned(),
+    ];
+    if let Some(query) = mysql.execute {
+        argv.push("--execute".to_owned());
+        argv.push(query.to_owned());
+    }
+    argv.extend(mysql.extra_args.iter().cloned());
+    argv.push(schema.to_owned());
+    argv
 }
 
 fn free_local_port(preferred: u16) -> Result<u16> {
@@ -321,6 +349,42 @@ mod tests {
         let mut instance = resource("d", &["Mysql"]);
         instance.kind = ResourceKind::Instance;
         assert!(!is_database(&instance, &config));
+    }
+
+    #[test]
+    fn mysql_argv_places_execute_and_extra_args_before_the_schema() {
+        let options = MysqlOptions {
+            execute: Some("SELECT 1"),
+            extra_args: &["--table".to_owned()],
+        };
+        let argv = mysql_argv(13306, "mael_lepetit", "search", options);
+        assert_eq!(
+            argv,
+            [
+                "-h",
+                "127.0.0.1",
+                "-P",
+                "13306",
+                "-u",
+                "mael_lepetit",
+                "--execute",
+                "SELECT 1",
+                "--table",
+                "search",
+            ]
+        );
+
+        let plain = mysql_argv(
+            13306,
+            "u",
+            "s",
+            MysqlOptions {
+                execute: None,
+                extra_args: &[],
+            },
+        );
+        assert_eq!(plain.last().unwrap(), "s");
+        assert!(!plain.contains(&"--execute".to_owned()));
     }
 
     #[test]

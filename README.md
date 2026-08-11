@@ -56,7 +56,7 @@ After that, plain `ssh`, `scp` and IDE remote sessions work on every server name
 | Command | What it does |
 |---|---|
 | `scwx connect [query]` | Pick a server (fzf) and open an SSH session; in tmux, `enter` opens a window, `ctrl-s`/`ctrl-v` a split, `ctrl-o` stays inline |
-| `scwx db [name]` | Pick a database and open a mysql session through a tunnel |
+| `scwx db [name]` | Pick a database and open a mysql session through a tunnel; `-e "SELECT ..."` or a stdin pipe runs a query non-interactively, `-- <args>` passes flags to mysql |
 | `scwx pf [query]` | Start a background port-forward tunnel |
 | `scwx pf ls` / `scwx pf stop [name]` | List / stop tunnels |
 | `scwx ls` | List the inventory (`--json` for scripts) |
