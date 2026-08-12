@@ -170,10 +170,9 @@ fn record_path(dir: &Path, name: &str) -> PathBuf {
     dir.join(format!("{name}.json"))
 }
 
-fn records() -> Result<Vec<TunnelRecord>> {
-    let dir = paths::sockets_dir()?;
-    let Ok(entries) = fs::read_dir(&dir) else {
-        return Ok(vec![]);
+fn records(dir: &Path) -> Vec<TunnelRecord> {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return vec![];
     };
     let mut records: Vec<TunnelRecord> = entries
         .filter_map(|entry| {
@@ -181,22 +180,45 @@ fn records() -> Result<Vec<TunnelRecord>> {
             if path.extension()? != "json" {
                 return None;
             }
-            serde_json::from_str(&fs::read_to_string(path).ok()?).ok()
+            let raw = fs::read_to_string(&path).ok()?;
+            let record = serde_json::from_str(&raw);
+            if record.is_err() {
+                eprintln!("warning: ignoring unreadable record {}", path.display());
+            }
+            record.ok()
         })
         .collect();
     records.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(records)
+    records
 }
 
-fn is_alive(dir: &Path, record: &TunnelRecord) -> bool {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MasterState {
+    Alive,
+    Dead,
+    /// ssh itself could not run; says nothing about the master.
+    Unknown,
+}
+
+fn control_command(dir: &Path, record: &TunnelRecord, operation: &str) -> Command {
     let socket = socket_path(dir, &record.name);
-    Command::new("ssh")
-        .args(["-S", &socket.to_string_lossy(), "-O", "check"])
+    let mut command = Command::new("ssh");
+    command
+        .arg("-S")
+        .arg(socket)
+        .args(["-O", operation])
         .arg(&record.destination)
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success())
+        .stderr(Stdio::null());
+    command
+}
+
+fn master_state(dir: &Path, record: &TunnelRecord) -> MasterState {
+    match control_command(dir, record, "check").status() {
+        Ok(status) if status.success() => MasterState::Alive,
+        Ok(_) => MasterState::Dead,
+        Err(_) => MasterState::Unknown,
+    }
 }
 
 fn remove(dir: &Path, name: &str) {
@@ -207,10 +229,17 @@ fn remove(dir: &Path, name: &str) {
 fn list() -> Result<()> {
     let dir = paths::sockets_dir()?;
     let mut printed = false;
-    for record in records()? {
-        if !is_alive(&dir, &record) {
-            remove(&dir, &record.name);
-            continue;
+    for record in records(&dir) {
+        match master_state(&dir, &record) {
+            MasterState::Dead => {
+                remove(&dir, &record.name);
+                continue;
+            }
+            MasterState::Unknown => {
+                eprintln!("warning: could not check {}; keeping it", record.name);
+                continue;
+            }
+            MasterState::Alive => {}
         }
         println!(
             "{}  127.0.0.1:{} -> {}",
@@ -224,33 +253,99 @@ fn list() -> Result<()> {
     Ok(())
 }
 
+fn matching<'a>(records: &'a [TunnelRecord], name: Option<&str>) -> Vec<&'a TunnelRecord> {
+    match name {
+        Some(name) => records
+            .iter()
+            .filter(|record| record.name.contains(name))
+            .collect(),
+        None => records.iter().collect(),
+    }
+}
+
 fn stop(name: Option<&str>) -> Result<()> {
     let dir = paths::sockets_dir()?;
-    let records = records()?;
+    let records = records(&dir);
     ensure!(!records.is_empty(), "no active tunnels");
 
-    let selected: Vec<&TunnelRecord> = match name {
-        Some(name) => {
-            let matched: Vec<&TunnelRecord> = records
-                .iter()
-                .filter(|record| record.name.contains(name))
-                .collect();
-            ensure!(!matched.is_empty(), "no tunnel matches '{name}'");
-            matched
-        }
-        None => records.iter().collect(),
-    };
+    let selected = matching(&records, name);
+    if let Some(name) = name {
+        ensure!(!selected.is_empty(), "no tunnel matches '{name}'");
+    }
 
     for record in selected {
-        let socket = socket_path(&dir, &record.name);
-        let _ = Command::new("ssh")
-            .args(["-S", &socket.to_string_lossy(), "-O", "exit"])
-            .arg(&record.destination)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-        remove(&dir, &record.name);
-        println!("stopped {}", record.name);
+        let exited = control_command(&dir, record, "exit")
+            .status()
+            .is_ok_and(|status| status.success());
+        // The master may already be gone; confirm before deleting its
+        // bookkeeping, or a live tunnel becomes unstoppable.
+        if exited || master_state(&dir, record) != MasterState::Alive {
+            remove(&dir, &record.name);
+            println!("stopped {}", record.name);
+        } else {
+            eprintln!(
+                "warning: {} did not exit; keeping its socket in place",
+                record.name
+            );
+        }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn record(name: &str) -> TunnelRecord {
+        TunnelRecord {
+            name: name.to_owned(),
+            local_port: 13306,
+            remote_port: 3306,
+            target: "172.16.0.1:3306".to_owned(),
+            destination: "bastion@5.6.7.8".to_owned(),
+        }
+    }
+
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("scwx-pf-{name}-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn records_reads_json_files_and_warns_on_garbage() {
+        let dir = temp_dir("records");
+        fs::write(
+            record_path(&dir, "good"),
+            serde_json::to_string(&record("good")).unwrap(),
+        )
+        .unwrap();
+        fs::write(record_path(&dir, "bad"), "not json").unwrap();
+        fs::write(dir.join("ignored.sock"), "").unwrap();
+
+        let records = records(&dir);
+        fs::remove_dir_all(&dir).unwrap();
+
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].name, "good");
+    }
+
+    #[test]
+    fn records_of_a_missing_dir_is_empty() {
+        assert!(records(Path::new("/nonexistent/scwx-sockets")).is_empty());
+    }
+
+    #[test]
+    fn matching_filters_by_substring_and_none_selects_all() {
+        let records = vec![record("api-8080"), record("redis-commons-6379")];
+
+        let all = matching(&records, None);
+        assert_eq!(all.len(), 2);
+
+        let redis = matching(&records, Some("redis"));
+        assert_eq!(redis.len(), 1);
+        assert_eq!(redis[0].name, "redis-commons-6379");
+
+        assert!(matching(&records, Some("nope")).is_empty());
+    }
 }
