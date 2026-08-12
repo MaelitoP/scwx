@@ -12,6 +12,7 @@ use anyhow::{Context, Result, bail, ensure};
 
 use crate::cli::Scope;
 use crate::config::{Config, Credentials};
+use crate::database::{db_key, is_database};
 use crate::inventory::{Bastion, Environment, Resource, ResourceKind};
 use crate::picker::{self, PickOutcome, Selection};
 use crate::{cache, paths, scw, secrets, ssh, table, tmux};
@@ -80,52 +81,6 @@ pub fn run(
     }
 
     connect(target, env, config, &bastion, mysql)
-}
-
-/// Unique database keys for the configured default env, for shell completion.
-pub fn names(resources: &[&Resource], config: &Config) -> Vec<String> {
-    let env = config.db.default_env;
-    let mut names: Vec<String> = resources
-        .iter()
-        .filter(|resource| is_database(resource, config))
-        .filter(|resource| resource.env(&config.tags) == Some(env))
-        .map(|resource| db_key(resource, config, env))
-        .collect();
-    names.sort();
-    names.dedup();
-    names
-}
-
-fn is_database(resource: &Resource, config: &Config) -> bool {
-    match resource.kind {
-        ResourceKind::Rdb => true,
-        ResourceKind::Baremetal => resource.is_mysql(&config.tags),
-        ResourceKind::Instance | ResourceKind::Redis | ResourceKind::Lb => false,
-    }
-}
-
-/// Short database key: display name without the env segment and shard suffix.
-/// `platform-ingestor-prod-search-2` -> `search`.
-fn db_key(resource: &Resource, config: &Config, env: Environment) -> String {
-    let mut key = resource.display_name(&config.naming).to_owned();
-    if let Some(rest) = key.strip_prefix(&format!("{env}-")) {
-        key = rest.to_owned();
-    }
-    if let Some(rest) = config
-        .db
-        .strip_prefixes
-        .iter()
-        .find_map(|prefix| key.strip_prefix(prefix))
-    {
-        key = rest.to_owned();
-    }
-    if let Some(position) = key.rfind('-')
-        && !key[position + 1..].is_empty()
-        && key[position + 1..].chars().all(|c| c.is_ascii_digit())
-    {
-        key.truncate(position);
-    }
-    key
 }
 
 fn render(databases: &[&Resource], config: &Config, env: Environment) -> Vec<String> {
@@ -306,55 +261,6 @@ fn wait_for_port(child: &mut Child, port: u16) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn resource(name: &str, tags: &[&str]) -> Resource {
-        Resource {
-            kind: ResourceKind::Baremetal,
-            id: "id".to_owned(),
-            name: name.to_owned(),
-            zone: "fr-par-1".to_owned(),
-            tags: tags.iter().map(|t| (*t).to_owned()).collect(),
-            endpoint_ip: None,
-            endpoint_port: None,
-        }
-    }
-
-    fn config() -> Config {
-        let mut config = Config::default();
-        config.naming.strip_prefixes = vec!["platform-ingestor-".to_owned()];
-        config
-    }
-
-    #[test]
-    fn db_key_strips_prefix_env_and_shard() {
-        let r = resource("platform-ingestor-prod-search-2", &[]);
-        assert_eq!(db_key(&r, &config(), Environment::Prod), "search");
-    }
-
-    #[test]
-    fn db_key_keeps_inner_digits_and_foreign_env() {
-        let r = resource("platform-ingestor-db-matched-article-1", &[]);
-        assert_eq!(db_key(&r, &config(), Environment::Prod), "matched-article");
-
-        let r = resource("platform-ingestor-beta-saga", &[]);
-        assert_eq!(db_key(&r, &config(), Environment::Prod), "beta-saga");
-        assert_eq!(db_key(&r, &config(), Environment::Beta), "saga");
-    }
-
-    #[test]
-    fn only_rdb_and_mysql_tagged_baremetal_are_databases() {
-        let config = config();
-        let mut rdb = resource("a", &[]);
-        rdb.kind = ResourceKind::Rdb;
-        assert!(is_database(&rdb, &config));
-
-        assert!(is_database(&resource("b", &["Mysql"]), &config));
-        assert!(!is_database(&resource("c", &[]), &config));
-
-        let mut instance = resource("d", &["Mysql"]);
-        instance.kind = ResourceKind::Instance;
-        assert!(!is_database(&instance, &config));
-    }
 
     #[test]
     fn mysql_argv_places_execute_and_extra_args_before_the_schema() {

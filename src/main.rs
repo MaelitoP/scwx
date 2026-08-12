@@ -2,6 +2,7 @@ mod cache;
 mod cli;
 mod commands;
 mod config;
+mod database;
 mod exec;
 mod inventory;
 mod output;

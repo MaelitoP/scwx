@@ -84,7 +84,7 @@ fn print_names(names: NameOutput, resources: &[&Resource], config: &Config) -> R
             .map(|r| r.display_name(&config.naming))
             .collect(),
         NameOutput::Databases => {
-            for name in crate::commands::db::names(resources, config) {
+            for name in crate::database::database_keys(resources, config) {
                 if !output::emit(&name)? {
                     break;
                 }
