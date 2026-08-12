@@ -23,7 +23,31 @@ pub fn run(cli: &Cli, config: &Config, query: Option<&str>) -> Result<()> {
             .filter(|resource| resource.matches(query, &config.naming))
             .collect();
         match matches.len() {
-            0 => bail!("no server matches '{query}'"),
+            0 => {
+                let unreachable_match =
+                    inventory
+                        .filtered(cli.env, &config.tags)
+                        .into_iter()
+                        .find(|resource| {
+                            !resource.kind.is_server() && resource.matches(query, &config.naming)
+                        });
+                match unreachable_match {
+                    Some(resource) => {
+                        let name = resource.display_name(&config.naming);
+                        let hint = match resource.kind {
+                            crate::inventory::ResourceKind::Rdb => {
+                                format!("scwx db {name}")
+                            }
+                            _ => format!("scwx pf {name}"),
+                        };
+                        bail!(
+                            "{name} is a {} and has no ssh; try `{hint}`",
+                            resource.kind.label()
+                        )
+                    }
+                    None => bail!("no server matches '{query}'"),
+                }
+            }
             1 => return open(matches[0], PickOutcome::Inline, config, &bastion),
             _ => {}
         }
