@@ -86,7 +86,7 @@ fn download(agent: &Agent, asset: &Asset) -> Result<Vec<u8>> {
         .with_context(|| format!("reading {}", asset.name))
 }
 
-pub fn run() -> Result<()> {
+pub(crate) fn run() -> Result<()> {
     let agent: Agent = Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(120)))
         .https_only(true)

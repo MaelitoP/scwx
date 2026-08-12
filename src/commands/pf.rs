@@ -12,7 +12,7 @@ use crate::inventory::Resource;
 use crate::picker::{self, Selection};
 use crate::{cache, output, paths, ssh};
 
-pub fn run(
+pub(crate) fn run(
     scope: &Scope,
     config: &Config,
     command: Option<&PfCommand>,

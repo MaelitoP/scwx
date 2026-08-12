@@ -1,16 +1,17 @@
+//! A value that must never appear in logs or error chains.
+
 use std::fmt;
 
-/// A value that must never appear in logs or error chains; Debug prints a
-/// placeholder instead of the content.
+/// Debug prints a placeholder instead of the content.
 #[derive(Clone)]
-pub struct Sensitive(String);
+pub(crate) struct Sensitive(String);
 
 impl Sensitive {
-    pub fn new(value: String) -> Self {
+    pub(crate) fn new(value: String) -> Self {
         Self(value)
     }
 
-    pub fn expose(&self) -> &str {
+    pub(crate) fn expose(&self) -> &str {
         &self.0
     }
 }

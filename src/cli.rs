@@ -1,3 +1,5 @@
+//! Command-line surface: clap definitions and the cross-command scope.
+
 use clap::{Parser, Subcommand};
 
 use crate::cache::Freshness;
@@ -5,10 +7,12 @@ use crate::inventory::Environment;
 
 // Shared with the zsh completion rewriter, which anchors its dynamic-name
 // surgery on these exact strings.
-pub const CONNECT_QUERY_HELP: &str =
+pub(crate) const CONNECT_QUERY_HELP: &str =
     "Fuzzy query; connects directly when it matches a single server";
-pub const DB_NAME_HELP: &str = "Database name; picks interactively when omitted or ambiguous";
-pub const PF_QUERY_HELP: &str = "Fuzzy query; forwards directly when it matches a single resource";
+pub(crate) const DB_NAME_HELP: &str =
+    "Database name; picks interactively when omitted or ambiguous";
+pub(crate) const PF_QUERY_HELP: &str =
+    "Fuzzy query; forwards directly when it matches a single resource";
 
 #[derive(Debug, Parser)]
 #[command(
@@ -16,28 +20,28 @@ pub const PF_QUERY_HELP: &str = "Fuzzy query; forwards directly when it matches 
     version,
     about = "Fast SSH, database and port-forward access to Scaleway infrastructure"
 )]
-pub struct Cli {
+pub(crate) struct Cli {
     #[command(subcommand)]
-    pub command: Command,
+    pub(crate) command: Command,
 
     /// Bypass the cache and fetch a fresh inventory
     #[arg(long, global = true)]
-    pub refresh: bool,
+    pub(crate) refresh: bool,
 
     /// Filter resources by environment
     #[arg(long, global = true, value_enum)]
-    pub env: Option<Environment>,
+    pub(crate) env: Option<Environment>,
 }
 
 /// The two cross-command inputs every inventory-backed command needs.
 #[derive(Debug, Clone, Copy)]
-pub struct Scope {
-    pub env: Option<Environment>,
-    pub freshness: Freshness,
+pub(crate) struct Scope {
+    pub(crate) env: Option<Environment>,
+    pub(crate) freshness: Freshness,
 }
 
 impl Cli {
-    pub fn scope(&self) -> Scope {
+    pub(crate) fn scope(&self) -> Scope {
         Scope {
             env: self.env,
             freshness: if self.refresh {
@@ -50,7 +54,7 @@ impl Cli {
 }
 
 #[derive(Debug, Subcommand)]
-pub enum Command {
+pub(crate) enum Command {
     /// List the resource inventory
     Ls {
         /// Output as JSON
@@ -110,7 +114,7 @@ pub enum Command {
 }
 
 #[derive(Debug, Subcommand)]
-pub enum PfCommand {
+pub(crate) enum PfCommand {
     /// List active tunnels
     Ls,
     /// Stop a tunnel (all tunnels when no name is given)

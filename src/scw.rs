@@ -1,3 +1,5 @@
+//! Scaleway API client and the concurrent inventory fetch.
+
 use std::thread;
 use std::time::Duration;
 
@@ -15,7 +17,7 @@ const PAGE_SIZE: usize = 100;
 const MAX_PAGES: usize = 100;
 
 #[derive(Debug)]
-pub enum FetchError {
+pub(crate) enum FetchError {
     Api(ureq::Error),
     TooManyPages,
 }
@@ -38,13 +40,13 @@ impl std::fmt::Display for FetchError {
 impl std::error::Error for FetchError {}
 
 #[derive(Debug)]
-pub struct Client {
+pub(crate) struct Client {
     agent: Agent,
     secret_key: Sensitive,
 }
 
 impl Client {
-    pub fn new(credentials: &Credentials) -> Self {
+    pub(crate) fn new(credentials: &Credentials) -> Self {
         let agent: Agent = Agent::config_builder()
             .timeout_global(Some(Duration::from_secs(15)))
             .https_only(true)
@@ -56,7 +58,7 @@ impl Client {
         }
     }
 
-    pub fn fetch_json<T: DeserializeOwned>(
+    pub(crate) fn fetch_json<T: DeserializeOwned>(
         &self,
         path: &str,
         query: &[(&str, &str)],
@@ -508,12 +510,12 @@ fn collect_resources(
 /// A fetched inventory and whether every zone answered; partial results
 /// must not be cached, or one network blip poisons every command for the
 /// cache TTL.
-pub struct Fetched {
-    pub inventory: Inventory,
-    pub complete: bool,
+pub(crate) struct Fetched {
+    pub(crate) inventory: Inventory,
+    pub(crate) complete: bool,
 }
 
-pub fn fetch_inventory(credentials: &Credentials, config: &Config) -> Result<Fetched> {
+pub(crate) fn fetch_inventory(credentials: &Credentials, config: &Config) -> Result<Fetched> {
     let client = Client::new(credentials);
     let zones = &config.scaleway.zones;
     let regions = &config.scaleway.regions;

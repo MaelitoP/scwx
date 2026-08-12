@@ -1,3 +1,5 @@
+//! ssh invocations: sessions and tunnels through the bastion.
+
 use std::ffi::OsString;
 use std::path::Path;
 
@@ -10,7 +12,7 @@ use crate::shell::shell_join;
 
 /// Host keys churn as servers are rebuilt and resolve behind the bastion,
 /// so pinning them only produces noise and spurious failures.
-pub const HARDENING_OPTIONS: [(&str, &str); 3] = [
+pub(crate) const HARDENING_OPTIONS: [(&str, &str); 3] = [
     ("StrictHostKeyChecking", "no"),
     ("UserKnownHostsFile", "/dev/null"),
     ("LogLevel", "ERROR"),
@@ -31,7 +33,7 @@ fn option_args(options: &[(&str, &str)]) -> Vec<String> {
 }
 
 /// Renders options as indented ssh_config lines, for sync-ssh.
-pub fn option_config_lines(options: &[(&str, &str)]) -> String {
+pub(crate) fn option_config_lines(options: &[(&str, &str)]) -> String {
     options
         .iter()
         .map(|(key, value)| format!("    {key} {value}\n"))
@@ -41,7 +43,7 @@ pub fn option_config_lines(options: &[(&str, &str)]) -> String {
 /// An ssh invocation whose destination stays explicit until the end, so
 /// options can always be appended safely.
 #[derive(Debug)]
-pub struct SshCommand {
+pub(crate) struct SshCommand {
     options: Vec<OsString>,
     destination: String,
 }
@@ -60,17 +62,17 @@ impl SshCommand {
 
     /// Backgrounds the connection as a control master so it can be checked
     /// and stopped later via ssh -S <socket> -O check/exit.
-    pub fn with_control_socket(mut self, socket: &Path) -> Self {
+    pub(crate) fn with_control_socket(mut self, socket: &Path) -> Self {
         self.options.extend(["-f", "-M", "-S"].map(OsString::from));
         self.options.push(socket.into());
         self
     }
 
-    pub fn destination(&self) -> &str {
+    pub(crate) fn destination(&self) -> &str {
         &self.destination
     }
 
-    pub fn into_argv(self) -> Vec<OsString> {
+    pub(crate) fn into_argv(self) -> Vec<OsString> {
         let mut argv = vec![OsString::from("ssh")];
         argv.extend(self.options);
         argv.push(OsString::from(self.destination));
@@ -128,19 +130,19 @@ fn through_bastion(config: &Config, bastion: &Bastion, destination: String) -> R
 }
 
 /// Interactive session to a server, reached by name through the bastion.
-pub fn session(host: &str, config: &Config, bastion: &Bastion) -> Result<SshCommand> {
+pub(crate) fn session(host: &str, config: &Config, bastion: &Bastion) -> Result<SshCommand> {
     through_bastion(config, bastion, format!("{}@{host}", config.ssh.user))
 }
 
-pub struct Tunnel<'a> {
-    pub local_port: u16,
-    pub target_host: &'a str,
-    pub remote_port: u16,
+pub(crate) struct Tunnel<'a> {
+    pub(crate) local_port: u16,
+    pub(crate) target_host: &'a str,
+    pub(crate) remote_port: u16,
 }
 
 /// Forward through the bastion itself: -L local:target:remote on the
 /// bastion connection, for targets the bastion can reach directly.
-pub fn bastion_tunnel(
+pub(crate) fn bastion_tunnel(
     tunnel: &Tunnel<'_>,
     config: &Config,
     bastion: &Bastion,
@@ -163,7 +165,7 @@ pub fn bastion_tunnel(
 }
 
 /// Forward to a server's own loopback, jumping through the bastion.
-pub fn server_tunnel(
+pub(crate) fn server_tunnel(
     tunnel: &Tunnel<'_>,
     config: &Config,
     bastion: &Bastion,

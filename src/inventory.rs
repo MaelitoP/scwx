@@ -1,3 +1,5 @@
+//! The resource inventory domain model.
+
 use std::fmt;
 use std::str::FromStr;
 
@@ -8,7 +10,7 @@ use crate::config::{NamingRules, TagConventions};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ResourceKind {
+pub(crate) enum ResourceKind {
     Instance,
     Baremetal,
     Rdb,
@@ -17,7 +19,7 @@ pub enum ResourceKind {
 }
 
 impl ResourceKind {
-    pub fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Instance => "instance",
             Self::Baremetal => "baremetal",
@@ -28,7 +30,7 @@ impl ResourceKind {
     }
 
     /// Kinds reachable with a plain SSH session.
-    pub fn is_server(self) -> bool {
+    pub(crate) fn is_server(self) -> bool {
         match self {
             Self::Instance | Self::Baremetal => true,
             Self::Rdb | Self::Redis | Self::Lb => false,
@@ -38,7 +40,7 @@ impl ResourceKind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
 #[serde(rename_all = "snake_case")]
-pub enum Environment {
+pub(crate) enum Environment {
     Prod,
     Beta,
     Dev,
@@ -51,7 +53,7 @@ impl fmt::Display for ResourceKind {
 }
 
 impl Environment {
-    pub fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Prod => "prod",
             Self::Beta => "beta",
@@ -80,7 +82,7 @@ impl fmt::Display for Environment {
 }
 
 #[derive(Debug)]
-pub struct UnknownEnvironment(String);
+pub(crate) struct UnknownEnvironment(String);
 
 impl fmt::Display for UnknownEnvironment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -91,19 +93,19 @@ impl fmt::Display for UnknownEnvironment {
 impl std::error::Error for UnknownEnvironment {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Resource {
-    pub kind: ResourceKind,
-    pub id: String,
-    pub name: String,
-    pub zone: String,
+pub(crate) struct Resource {
+    pub(crate) kind: ResourceKind,
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) zone: String,
     #[serde(default)]
-    pub tags: Vec<String>,
+    pub(crate) tags: Vec<String>,
     /// Private IP for baremetal/rdb/redis/lb targets; servers are reached by name.
     #[serde(default)]
-    pub endpoint_ip: Option<String>,
+    pub(crate) endpoint_ip: Option<String>,
     /// Service port advertised by the resource's endpoint (rdb/redis).
     #[serde(default)]
-    pub endpoint_port: Option<u16>,
+    pub(crate) endpoint_port: Option<u16>,
 }
 
 fn contains_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
@@ -115,7 +117,7 @@ fn contains_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
 }
 
 impl Resource {
-    pub fn display_name<'a>(&'a self, naming: &NamingRules) -> &'a str {
+    pub(crate) fn display_name<'a>(&'a self, naming: &NamingRules) -> &'a str {
         naming
             .strip_prefixes
             .iter()
@@ -123,18 +125,18 @@ impl Resource {
             .unwrap_or(&self.name)
     }
 
-    pub fn env(&self, tags: &TagConventions) -> Option<Environment> {
+    pub(crate) fn env(&self, tags: &TagConventions) -> Option<Environment> {
         self.tags
             .iter()
             .find_map(|tag| tag.strip_prefix(&tags.env_prefix))
             .and_then(|value| value.parse().ok())
     }
 
-    pub fn port_forward_enabled(&self, tags: &TagConventions) -> bool {
+    pub(crate) fn port_forward_enabled(&self, tags: &TagConventions) -> bool {
         self.tags.contains(&tags.port_forward_enabled)
     }
 
-    pub fn port_forward_port(&self, tags: &TagConventions) -> Option<u16> {
+    pub(crate) fn port_forward_port(&self, tags: &TagConventions) -> Option<u16> {
         self.tags
             .iter()
             .find_map(|tag| tag.strip_prefix(&tags.port_forward_prefix))
@@ -142,45 +144,45 @@ impl Resource {
             .or(self.endpoint_port)
     }
 
-    pub fn is_mysql(&self, tags: &TagConventions) -> bool {
+    pub(crate) fn is_mysql(&self, tags: &TagConventions) -> bool {
         self.tags.contains(&tags.mysql)
     }
 
-    pub fn is_master(&self, tags: &TagConventions) -> bool {
+    pub(crate) fn is_master(&self, tags: &TagConventions) -> bool {
         self.tags.contains(&tags.master)
     }
 
-    pub fn matches(&self, query: &str, naming: &NamingRules) -> bool {
+    pub(crate) fn matches(&self, query: &str, naming: &NamingRules) -> bool {
         contains_ignore_ascii_case(&self.name, query)
             || contains_ignore_ascii_case(self.display_name(naming), query)
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Bastion {
-    pub ip: String,
-    pub port: u16,
-    pub zone: String,
+pub(crate) struct Bastion {
+    pub(crate) ip: String,
+    pub(crate) port: u16,
+    pub(crate) zone: String,
 }
 
 impl Bastion {
-    pub fn destination(&self, user: &str) -> String {
+    pub(crate) fn destination(&self, user: &str) -> String {
         format!("{user}@{}", self.ip)
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Inventory {
-    pub resources: Vec<Resource>,
+pub(crate) struct Inventory {
+    pub(crate) resources: Vec<Resource>,
     bastion: Option<Bastion>,
 }
 
 impl Inventory {
-    pub fn new(resources: Vec<Resource>, bastion: Option<Bastion>) -> Self {
+    pub(crate) fn new(resources: Vec<Resource>, bastion: Option<Bastion>) -> Self {
         Self { resources, bastion }
     }
 
-    pub fn filtered<'a>(
+    pub(crate) fn filtered<'a>(
         &'a self,
         env: Option<Environment>,
         tags: &'a TagConventions,
@@ -190,7 +192,7 @@ impl Inventory {
             .filter(move |resource| env.is_none() || resource.env(tags) == env)
     }
 
-    pub fn require_bastion(&self) -> anyhow::Result<&Bastion> {
+    pub(crate) fn require_bastion(&self) -> anyhow::Result<&Bastion> {
         self.bastion
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("no bastion-enabled vpc gateway found in the inventory"))

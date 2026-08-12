@@ -1,3 +1,5 @@
+//! Opening sessions in tmux windows and splits.
+
 use std::env;
 use std::ffi::OsString;
 use std::process::Command;
@@ -7,17 +9,17 @@ use anyhow::{Context, Result, ensure};
 use crate::shell::shell_join;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Placement {
+pub(crate) enum Placement {
     Window,
     Below,
     Beside,
 }
 
-pub fn inside_tmux() -> bool {
+pub(crate) fn inside_tmux() -> bool {
     env::var_os("TMUX").is_some_and(|value| !value.is_empty())
 }
 
-pub fn open(placement: Placement, title: &str, argv: &[OsString]) -> Result<()> {
+pub(crate) fn open(placement: Placement, title: &str, argv: &[OsString]) -> Result<()> {
     let command = shell_join(
         &argv
             .iter()

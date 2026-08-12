@@ -1,3 +1,5 @@
+//! On-disk inventory cache with a short TTL.
+
 use std::fs;
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
@@ -20,7 +22,7 @@ struct CacheFile {
     inventory: Inventory,
 }
 
-pub fn load_fresh(path: &Path, ttl: Duration, now: SystemTime) -> Option<Inventory> {
+pub(crate) fn load_fresh(path: &Path, ttl: Duration, now: SystemTime) -> Option<Inventory> {
     let raw = fs::read_to_string(path).ok()?;
     let file: CacheFile = serde_json::from_str(&raw).ok()?;
     if file.version != CACHE_VERSION {
@@ -31,7 +33,7 @@ pub fn load_fresh(path: &Path, ttl: Duration, now: SystemTime) -> Option<Invento
     (age <= ttl.as_secs()).then_some(file.inventory)
 }
 
-pub fn store(path: &Path, inventory: &Inventory, now: SystemTime) -> Result<()> {
+pub(crate) fn store(path: &Path, inventory: &Inventory, now: SystemTime) -> Result<()> {
     let parent = path.parent().context("cache path has no parent")?;
     fs::create_dir_all(parent)
         .with_context(|| format!("creating cache directory {}", parent.display()))?;
@@ -63,18 +65,18 @@ pub fn store(path: &Path, inventory: &Inventory, now: SystemTime) -> Result<()> 
 }
 
 /// Cache-only read for completion helpers: any age is fine, never fetch.
-pub fn load_ignoring_ttl() -> Result<Option<Inventory>> {
+pub(crate) fn load_ignoring_ttl() -> Result<Option<Inventory>> {
     let path = paths::cache_file()?;
     Ok(load_fresh(&path, Duration::MAX, SystemTime::now()))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Freshness {
+pub(crate) enum Freshness {
     CacheOk,
     Refresh,
 }
 
-pub fn load_or_fetch(freshness: Freshness, config: &Config) -> Result<Inventory> {
+pub(crate) fn load_or_fetch(freshness: Freshness, config: &Config) -> Result<Inventory> {
     let path = paths::cache_file()?;
     let ttl = Duration::from_secs(config.cache.ttl_seconds);
 

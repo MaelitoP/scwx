@@ -19,12 +19,12 @@ use crate::picker::{self, PickOutcome, Selection};
 use crate::{cache, paths, scw, secrets, ssh, table, tmux};
 
 #[derive(Debug, Clone, Copy)]
-pub struct MysqlOptions<'a> {
-    pub execute: Option<&'a str>,
-    pub extra_args: &'a [String],
+pub(crate) struct MysqlOptions<'a> {
+    pub(crate) execute: Option<&'a str>,
+    pub(crate) extra_args: &'a [String],
 }
 
-pub fn run(
+pub(crate) fn run(
     scope: &Scope,
     config: &Config,
     name: Option<&str>,

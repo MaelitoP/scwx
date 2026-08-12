@@ -1,3 +1,5 @@
+//! scwx settings (config.toml) and Scaleway credentials (scw config.yaml).
+
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -11,20 +13,20 @@ use crate::sensitive::Sensitive;
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct Config {
-    pub scaleway: ScalewayLocations,
-    pub bastion: BastionDefaults,
-    pub ssh: SshIdentity,
-    pub tags: TagConventions,
-    pub db: DatabaseRules,
-    pub naming: NamingRules,
-    pub cache: CachePolicy,
+pub(crate) struct Config {
+    pub(crate) scaleway: ScalewayLocations,
+    pub(crate) bastion: BastionDefaults,
+    pub(crate) ssh: SshIdentity,
+    pub(crate) tags: TagConventions,
+    pub(crate) db: DatabaseRules,
+    pub(crate) naming: NamingRules,
+    pub(crate) cache: CachePolicy,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct CachePolicy {
-    pub ttl_seconds: u64,
+pub(crate) struct CachePolicy {
+    pub(crate) ttl_seconds: u64,
 }
 
 impl Default for CachePolicy {
@@ -35,9 +37,9 @@ impl Default for CachePolicy {
 
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct ScalewayLocations {
-    pub zones: Vec<String>,
-    pub regions: Vec<String>,
+pub(crate) struct ScalewayLocations {
+    pub(crate) zones: Vec<String>,
+    pub(crate) regions: Vec<String>,
 }
 
 impl Default for ScalewayLocations {
@@ -55,9 +57,9 @@ impl Default for ScalewayLocations {
 
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct BastionDefaults {
-    pub user: String,
-    pub fallback_port: u16,
+pub(crate) struct BastionDefaults {
+    pub(crate) user: String,
+    pub(crate) fallback_port: u16,
 }
 
 impl Default for BastionDefaults {
@@ -71,10 +73,10 @@ impl Default for BastionDefaults {
 
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct SshIdentity {
-    pub user: String,
+pub(crate) struct SshIdentity {
+    pub(crate) user: String,
     /// Private key passed to ssh with -i; ssh's own defaults apply when unset.
-    pub key: Option<String>,
+    pub(crate) key: Option<String>,
 }
 
 impl Default for SshIdentity {
@@ -88,12 +90,12 @@ impl Default for SshIdentity {
 
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct TagConventions {
-    pub port_forward_enabled: String,
-    pub port_forward_prefix: String,
-    pub env_prefix: String,
-    pub mysql: String,
-    pub master: String,
+pub(crate) struct TagConventions {
+    pub(crate) port_forward_enabled: String,
+    pub(crate) port_forward_prefix: String,
+    pub(crate) env_prefix: String,
+    pub(crate) mysql: String,
+    pub(crate) master: String,
 }
 
 impl Default for TagConventions {
@@ -110,17 +112,17 @@ impl Default for TagConventions {
 
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct DatabaseRules {
+pub(crate) struct DatabaseRules {
     /// Scaleway project holding the database password secrets.
-    pub secret_project_id: Option<String>,
+    pub(crate) secret_project_id: Option<String>,
     /// Secret name pattern; {db}, {user} and {env} expand uppercased.
-    pub secret_name_template: String,
+    pub(crate) secret_name_template: String,
     /// Database user; defaults to the OS user with dots replaced by underscores.
-    pub user: Option<String>,
-    pub default_env: Environment,
+    pub(crate) user: Option<String>,
+    pub(crate) default_env: Environment,
     /// Prefixes stripped from the database key, e.g. "db-" so that
     /// db-matched-article-1 resolves the MATCHED-ARTICLE secret.
-    pub strip_prefixes: Vec<String>,
+    pub(crate) strip_prefixes: Vec<String>,
 }
 
 impl Default for DatabaseRules {
@@ -137,13 +139,13 @@ impl Default for DatabaseRules {
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct NamingRules {
+pub(crate) struct NamingRules {
     /// Prefixes stripped from resource names for display and matching.
-    pub strip_prefixes: Vec<String>,
+    pub(crate) strip_prefixes: Vec<String>,
 }
 
 impl Config {
-    pub fn load(path: &Path) -> Result<Self> {
+    pub(crate) fn load(path: &Path) -> Result<Self> {
         if !path.exists() {
             return Ok(Self::default());
         }
@@ -154,9 +156,9 @@ impl Config {
 }
 
 #[derive(Debug, Clone)]
-pub struct Credentials {
-    pub secret_key: Sensitive,
-    pub default_project_id: Option<String>,
+pub(crate) struct Credentials {
+    pub(crate) secret_key: Sensitive,
+    pub(crate) default_project_id: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -175,7 +177,7 @@ struct ScwConfigFile {
 }
 
 impl Credentials {
-    pub fn load(path: &Path) -> Result<Self> {
+    pub(crate) fn load(path: &Path) -> Result<Self> {
         let mut file = ScwConfigFile::default();
         if path.exists() {
             let raw = fs::read_to_string(path)

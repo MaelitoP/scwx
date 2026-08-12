@@ -6,7 +6,7 @@ use clap_complete::Shell;
 
 use crate::cli::Cli;
 
-pub fn run(shell: Shell) -> Result<()> {
+pub(crate) fn run(shell: Shell) -> Result<()> {
     let mut command = Cli::command();
     if shell != Shell::Zsh {
         clap_complete::generate(shell, &mut command, "scwx", &mut io::stdout());

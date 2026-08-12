@@ -1,7 +1,9 @@
+//! What counts as a database and how its key names schema and secret.
+
 use crate::config::Config;
 use crate::inventory::{Environment, Resource, ResourceKind};
 
-pub fn is_database(resource: &Resource, config: &Config) -> bool {
+pub(crate) fn is_database(resource: &Resource, config: &Config) -> bool {
     match resource.kind {
         ResourceKind::Rdb => true,
         ResourceKind::Baremetal => resource.is_mysql(&config.tags),
@@ -12,7 +14,7 @@ pub fn is_database(resource: &Resource, config: &Config) -> bool {
 /// Short database key: display name without the env segment, configured db
 /// prefixes and shard suffix. `platform-ingestor-prod-search-2` -> `search`.
 /// The key names both the mysql schema and the password secret.
-pub fn db_key(resource: &Resource, config: &Config, env: Environment) -> String {
+pub(crate) fn db_key(resource: &Resource, config: &Config, env: Environment) -> String {
     let mut key = resource.display_name(&config.naming).to_owned();
     if let Some(rest) = key.strip_prefix(&format!("{env}-")) {
         key = rest.to_owned();
@@ -35,7 +37,7 @@ pub fn db_key(resource: &Resource, config: &Config, env: Environment) -> String 
 }
 
 /// Unique database keys for the configured default env, for shell completion.
-pub fn database_keys(resources: &[&Resource], config: &Config) -> Vec<String> {
+pub(crate) fn database_keys(resources: &[&Resource], config: &Config) -> Vec<String> {
     let env = config.db.default_env;
     let mut keys: Vec<String> = resources
         .iter()

@@ -1,7 +1,7 @@
 /// Renders rows as aligned columns separated by two spaces, with trailing
 /// whitespace trimmed. Widths count chars, not bytes, so non-ASCII names
 /// don't skew the columns.
-pub fn columns<const N: usize>(rows: &[[String; N]]) -> Vec<String> {
+pub(crate) fn columns<const N: usize>(rows: &[[String; N]]) -> Vec<String> {
     let mut widths = [0usize; N];
     for row in rows {
         for (width, cell) in widths.iter_mut().zip(row) {

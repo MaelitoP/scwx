@@ -1,3 +1,5 @@
+//! fzf-backed selection: rendering, the picker, and the shared query flow.
+
 use std::io::Write;
 use std::process::{Command, Stdio};
 
@@ -7,7 +9,7 @@ use crate::config::{Config, NamingRules};
 use crate::inventory::Resource;
 use crate::table;
 
-pub fn render_resources(resources: &[&Resource], config: &Config) -> Vec<String> {
+pub(crate) fn render_resources(resources: &[&Resource], config: &Config) -> Vec<String> {
     let rows: Vec<[String; 4]> = resources
         .iter()
         .map(|resource| {
@@ -26,7 +28,7 @@ pub fn render_resources(resources: &[&Resource], config: &Config) -> Vec<String>
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PickOutcome {
+pub(crate) enum PickOutcome {
     Window,
     Split,
     VSplit,
@@ -36,7 +38,7 @@ pub enum PickOutcome {
 impl PickOutcome {
     /// Where the session should land in tmux; None means the current
     /// terminal.
-    pub fn placement(self) -> Option<crate::tmux::Placement> {
+    pub(crate) fn placement(self) -> Option<crate::tmux::Placement> {
         match self {
             Self::Window => Some(crate::tmux::Placement::Window),
             Self::Split => Some(crate::tmux::Placement::Below),
@@ -47,15 +49,15 @@ impl PickOutcome {
 }
 
 #[derive(Debug)]
-pub struct Pick {
-    pub index: usize,
-    pub outcome: PickOutcome,
+pub(crate) struct Pick {
+    pub(crate) index: usize,
+    pub(crate) outcome: PickOutcome,
 }
 
 const KEY_LEGEND: &str = "enter=window  ctrl-s=split  ctrl-v=vsplit  ctrl-o=here";
 
 #[derive(Debug)]
-pub enum Selection<'a> {
+pub(crate) enum Selection<'a> {
     /// The query identified exactly one resource without a picker.
     Direct(&'a Resource),
     Picked(&'a Resource, PickOutcome),
@@ -67,7 +69,7 @@ pub enum Selection<'a> {
 /// The shared resolve-a-query-or-pick flow: an exact name match wins, a
 /// unique substring match connects directly, anything else opens the picker
 /// preseeded with the query. `lines` must align with `candidates`.
-pub fn select<'a>(
+pub(crate) fn select<'a>(
     candidates: &[&'a Resource],
     lines: &[String],
     header: &str,
@@ -114,7 +116,11 @@ pub fn select<'a>(
 
 /// Runs fzf over pre-rendered lines; returns the picked line index and the
 /// key-selected outcome, or None when the picker is cancelled.
-pub fn pick(lines: &[String], header: &str, initial_query: Option<&str>) -> Result<Option<Pick>> {
+pub(crate) fn pick(
+    lines: &[String],
+    header: &str,
+    initial_query: Option<&str>,
+) -> Result<Option<Pick>> {
     let Some(stdout) = run_fzf(lines, header, initial_query, true)? else {
         return Ok(None);
     };
@@ -122,7 +128,7 @@ pub fn pick(lines: &[String], header: &str, initial_query: Option<&str>) -> Resu
 }
 
 /// Picker without placement keys; returns the picked line index.
-pub fn pick_without_placement(
+pub(crate) fn pick_without_placement(
     lines: &[String],
     header: &str,
     initial_query: Option<&str>,

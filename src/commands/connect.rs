@@ -7,7 +7,7 @@ use crate::inventory::{Inventory, ResourceKind};
 use crate::picker::{self, PickOutcome, Selection};
 use crate::{cache, exec, ssh, tmux};
 
-pub fn run(scope: &Scope, config: &Config, query: Option<&str>) -> Result<()> {
+pub(crate) fn run(scope: &Scope, config: &Config, query: Option<&str>) -> Result<()> {
     let inventory = cache::load_or_fetch(scope.freshness, config)?;
     let bastion = inventory.require_bastion()?.clone();
     let servers: Vec<&Resource> = inventory

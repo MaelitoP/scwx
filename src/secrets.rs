@@ -1,3 +1,5 @@
+//! Database passwords from Scaleway Secret Manager.
+
 use anyhow::{Context, Result};
 use base64::Engine;
 use serde::Deserialize;
@@ -6,7 +8,7 @@ use crate::inventory::Environment;
 use crate::scw::Client;
 use crate::sensitive::Sensitive;
 
-pub fn secret_name(template: &str, db: &str, user: &str, env: Environment) -> String {
+pub(crate) fn secret_name(template: &str, db: &str, user: &str, env: Environment) -> String {
     template
         .replace("{db}", &db.to_uppercase())
         .replace("{user}", &user.to_uppercase())
@@ -28,7 +30,7 @@ struct SecretVersion {
     data: String,
 }
 
-pub fn read_secret(
+pub(crate) fn read_secret(
     client: &Client,
     region: &str,
     project_id: &str,

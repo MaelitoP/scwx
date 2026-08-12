@@ -1,7 +1,7 @@
 //! Quoting for strings that a shell will re-parse (tmux commands,
 //! ProxyCommand values).
 
-pub fn shell_join(argv: &[String]) -> String {
+pub(crate) fn shell_join(argv: &[String]) -> String {
     argv.iter()
         .map(|arg| shell_quote(arg))
         .collect::<Vec<_>>()

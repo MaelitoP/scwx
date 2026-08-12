@@ -11,7 +11,7 @@ use crate::{cache, paths, ssh};
 
 const BASTION_ALIAS: &str = "scwx-bastion";
 
-pub fn run(scope: &Scope, config: &Config) -> Result<()> {
+pub(crate) fn run(scope: &Scope, config: &Config) -> Result<()> {
     let inventory = cache::load_or_fetch(scope.freshness, config)?;
     let bastion = inventory.require_bastion()?;
     let servers: Vec<&Resource> = inventory

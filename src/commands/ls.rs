@@ -36,13 +36,13 @@ impl<'a> ResourceView<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NameOutput {
+pub(crate) enum NameOutput {
     Servers,
     Databases,
     Forwardable,
 }
 
-pub fn run(
+pub(crate) fn run(
     scope: &Scope,
     config: &Config,
     json: bool,

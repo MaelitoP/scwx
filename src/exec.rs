@@ -6,7 +6,7 @@ use std::process::Command;
 
 use anyhow::{Context, Result};
 
-pub fn command(argv: &[OsString]) -> Result<Command> {
+pub(crate) fn command(argv: &[OsString]) -> Result<Command> {
     let (program, args) = argv.split_first().context("empty command")?;
     let mut command = Command::new(program);
     command.args(args);
@@ -14,7 +14,7 @@ pub fn command(argv: &[OsString]) -> Result<Command> {
 }
 
 /// Replaces the current process; only returns on failure.
-pub fn replace(argv: &[OsString]) -> Result<()> {
+pub(crate) fn replace(argv: &[OsString]) -> Result<()> {
     let error = command(argv)?.exec();
     Err(error).with_context(|| format!("executing {}", argv[0].to_string_lossy()))
 }
