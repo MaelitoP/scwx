@@ -8,17 +8,33 @@ use crate::cli::Cli;
 
 pub(crate) fn run(shell: Shell) -> Result<()> {
     let mut command = Cli::command();
-    if shell != Shell::Zsh {
-        clap_complete::generate(shell, &mut command, "scwx", &mut io::stdout());
-        return Ok(());
-    }
+    let rewrite: fn(&str) -> String = match shell {
+        Shell::Zsh => with_dynamic_names,
+        Shell::Fish => with_fish_dynamic_names,
+        _ => {
+            clap_complete::generate(shell, &mut command, "scwx", &mut io::stdout());
+            return Ok(());
+        }
+    };
 
     let mut generated = Vec::new();
     clap_complete::generate(shell, &mut command, "scwx", &mut generated);
     let script = String::from_utf8(generated).context("generated completions are not utf-8")?;
     io::stdout()
-        .write_all(with_dynamic_names(&script).as_bytes())
+        .write_all(rewrite(&script).as_bytes())
         .context("writing completions")
+}
+
+/// Appends value completions reading the scwx cache; fish evaluates the
+/// command substitutions at completion time.
+fn with_fish_dynamic_names(script: &str) -> String {
+    let dynamic = r#"
+complete -c scwx -n "__fish_scwx_using_subcommand connect" -f -a "(scwx ls --names --cached 2>/dev/null)"
+complete -c scwx -n "__fish_scwx_using_subcommand db" -f -a "(scwx ls --db-names --cached 2>/dev/null)"
+complete -c scwx -n "__fish_scwx_using_subcommand pf; and not __fish_seen_subcommand_from ls stop help" -f -a "(scwx ls --pf-names --cached 2>/dev/null)"
+complete -c scwx -n "__fish_scwx_using_subcommand pf; and __fish_seen_subcommand_from stop" -f -a "(scwx pf ls 2>/dev/null | cut -d' ' -f1)"
+"#;
+    format!("{script}{dynamic}")
 }
 
 /// Swaps the static `_default` completers of name/query positionals for
@@ -111,5 +127,20 @@ mod tests {
         let helpers = script.find("_scwx_server_names() {").unwrap();
         let dispatch = script.find("if [ \"$funcstack[1]\" = \"_scwx\" ]").unwrap();
         assert!(helpers < dispatch);
+    }
+
+    #[test]
+    fn fish_script_appends_dynamic_value_completions() {
+        let mut command = Cli::command();
+        let mut generated = Vec::new();
+        clap_complete::generate(Shell::Fish, &mut command, "scwx", &mut generated);
+        let script = with_fish_dynamic_names(&String::from_utf8(generated).unwrap());
+
+        // The conditions must reference the helper clap actually generated.
+        assert!(script.contains("function __fish_scwx_using_subcommand"));
+        assert!(script.contains(r#"subcommand connect" -f -a "(scwx ls --names --cached"#));
+        assert!(script.contains("(scwx ls --db-names --cached"));
+        assert!(script.contains("(scwx ls --pf-names --cached"));
+        assert!(script.contains("(scwx pf ls 2>/dev/null | cut -d' ' -f1)"));
     }
 }

@@ -33,13 +33,15 @@ strip_prefixes = ["platform-ingestor-"]
 secret_project_id = "00000000-0000-0000-0000-000000000000"
 ```
 
-### Shell completion (zsh)
+### Shell completion
 
 ```sh
 scwx completions zsh > ~/.zsh/completions/_scwx
+scwx completions fish > ~/.config/fish/completions/scwx.fish
+scwx completions bash > /usr/local/etc/bash_completion.d/scwx
 ```
 
-Subcommands, flags, and server/database/tunnel names all tab-complete.
+Subcommands and flags complete in all shells; server/database/tunnel names also tab-complete in zsh and fish.
 
 ### SSH config integration
 
