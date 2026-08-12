@@ -65,9 +65,13 @@ pub fn load_or_fetch(refresh: bool, config: &Config) -> Result<Inventory> {
 
     eprintln!("refreshing inventory...");
     let credentials = crate::config::Credentials::load(&paths::scw_config_file()?)?;
-    let inventory = scw::fetch_inventory(&credentials, config)?;
-    store(&path, &inventory, SystemTime::now())?;
-    Ok(inventory)
+    let fetched = scw::fetch_inventory(&credentials, config)?;
+    if fetched.complete {
+        store(&path, &fetched.inventory, SystemTime::now())?;
+    } else {
+        eprintln!("warning: inventory is incomplete; not caching it");
+    }
+    Ok(fetched.inventory)
 }
 
 #[cfg(test)]

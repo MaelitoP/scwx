@@ -419,8 +419,9 @@ fn is_auth_error(error: &ureq::Error) -> bool {
 
 fn collect_resources(
     tasks: Vec<(String, Result<Vec<Resource>, ureq::Error>)>,
-) -> Result<Vec<Resource>> {
+) -> Result<(Vec<Resource>, bool)> {
     let mut resources = Vec::new();
+    let mut complete = true;
     for (label, result) in tasks {
         match result {
             Ok(mut items) => resources.append(&mut items),
@@ -429,13 +430,24 @@ fn collect_resources(
             }
             // 501: the product does not exist in this zone.
             Err(ureq::Error::StatusCode(501)) => {}
-            Err(error) => eprintln!("warning: skipping {label}: {error}"),
+            Err(error) => {
+                eprintln!("warning: skipping {label}: {error}");
+                complete = false;
+            }
         }
     }
-    Ok(resources)
+    Ok((resources, complete))
 }
 
-pub fn fetch_inventory(credentials: &Credentials, config: &Config) -> Result<Inventory> {
+/// A fetched inventory and whether every zone answered; partial results
+/// must not be cached, or one network blip poisons every command for the
+/// cache TTL.
+pub struct Fetched {
+    pub inventory: Inventory,
+    pub complete: bool,
+}
+
+pub fn fetch_inventory(credentials: &Credentials, config: &Config) -> Result<Fetched> {
     let client = Client::new(credentials);
     let zones = &config.scaleway.zones;
     let regions = &config.scaleway.regions;
@@ -471,29 +483,59 @@ pub fn fetch_inventory(credentials: &Credentials, config: &Config) -> Result<Inv
         }
         let bastion_tasks: Vec<_> = zones
             .iter()
-            .map(|zone| scope.spawn(|| client.find_bastion(zone)))
+            .map(|zone| (zone, scope.spawn(|| client.find_bastion(zone))))
             .collect();
         let ipam_tasks: Vec<_> = regions
             .iter()
-            .map(|region| scope.spawn(|| client.list_baremetal_private_ips(region)))
+            .map(|region| {
+                (
+                    region,
+                    scope.spawn(|| client.list_baremetal_private_ips(region)),
+                )
+            })
             .collect();
 
         let joined = resource_tasks
             .into_iter()
             .map(|(label, handle)| (label, handle.join().expect("api task panicked")))
             .collect();
-        let mut resources = collect_resources(joined)?;
+        let (mut resources, mut complete) = collect_resources(joined)?;
 
-        let bastion = bastion_tasks
-            .into_iter()
-            .filter_map(|handle| handle.join().expect("api task panicked").ok().flatten())
-            .next();
+        let mut bastion = None;
+        for (zone, handle) in bastion_tasks {
+            match handle.join().expect("api task panicked") {
+                Ok(found) => {
+                    if bastion.is_none() {
+                        bastion = found;
+                    }
+                }
+                Err(ureq::Error::StatusCode(501)) => {}
+                Err(error) if is_auth_error(&error) => {
+                    return Err(error)
+                        .with_context(|| format!("scaleway denied access (gateways in {zone})"));
+                }
+                Err(error) => {
+                    eprintln!("warning: skipping gateways in {zone}: {error}");
+                    complete = false;
+                }
+            }
+        }
 
-        let private_ips: Vec<(String, String)> = ipam_tasks
-            .into_iter()
-            .filter_map(|handle| handle.join().expect("api task panicked").ok())
-            .flatten()
-            .collect();
+        let mut private_ips: Vec<(String, String)> = Vec::new();
+        for (region, handle) in ipam_tasks {
+            match handle.join().expect("api task panicked") {
+                Ok(mut ips) => private_ips.append(&mut ips),
+                Err(ureq::Error::StatusCode(501)) => {}
+                Err(error) if is_auth_error(&error) => {
+                    return Err(error)
+                        .with_context(|| format!("scaleway denied access (ipam in {region})"));
+                }
+                Err(error) => {
+                    eprintln!("warning: skipping ipam in {region}: {error}");
+                    complete = false;
+                }
+            }
+        }
         for resource in &mut resources {
             if resource.kind == ResourceKind::Baremetal {
                 resource.endpoint_ip = private_ips
@@ -503,8 +545,15 @@ pub fn fetch_inventory(credentials: &Credentials, config: &Config) -> Result<Inv
             }
         }
 
+        if resources.is_empty() && !complete {
+            bail!("inventory fetch failed for every zone");
+        }
+
         resources.sort_by(|a, b| a.name.cmp(&b.name));
-        Ok(Inventory { resources, bastion })
+        Ok(Fetched {
+            inventory: Inventory { resources, bastion },
+            complete,
+        })
     })
 }
 
@@ -618,6 +667,57 @@ mod tests {
 
         let ips = baremetal_private_ips(list.items());
         assert_eq!(ips, [("db-master-1".to_owned(), "172.16.8.11".to_owned())]);
+    }
+
+    fn resource(name: &str) -> Resource {
+        Resource {
+            kind: ResourceKind::Instance,
+            id: "id".to_owned(),
+            name: name.to_owned(),
+            zone: "fr-par-1".to_owned(),
+            tags: vec![],
+            endpoint_ip: None,
+            endpoint_port: None,
+        }
+    }
+
+    #[test]
+    fn collect_treats_absent_products_as_complete() {
+        let (resources, complete) = collect_resources(vec![
+            ("instances in fr-par-1".to_owned(), Ok(vec![resource("a")])),
+            (
+                "redis in fr-par-3".to_owned(),
+                Err(ureq::Error::StatusCode(501)),
+            ),
+        ])
+        .unwrap();
+
+        assert_eq!(resources.len(), 1);
+        assert!(complete);
+    }
+
+    #[test]
+    fn collect_marks_transient_failures_incomplete() {
+        let (resources, complete) = collect_resources(vec![
+            ("instances in fr-par-1".to_owned(), Ok(vec![resource("a")])),
+            (
+                "baremetal in fr-par-2".to_owned(),
+                Err(ureq::Error::StatusCode(503)),
+            ),
+        ])
+        .unwrap();
+
+        assert_eq!(resources.len(), 1);
+        assert!(!complete);
+    }
+
+    #[test]
+    fn collect_propagates_auth_errors() {
+        let result = collect_resources(vec![(
+            "instances in fr-par-1".to_owned(),
+            Err(ureq::Error::StatusCode(401)),
+        )]);
+        assert!(result.is_err());
     }
 
     #[test]
