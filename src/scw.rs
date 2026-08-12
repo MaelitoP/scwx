@@ -449,17 +449,7 @@ impl Client {
             "page_size",
             &[],
         )?;
-        Ok(gateways
-            .into_iter()
-            .filter(|gateway| gateway.bastion_enabled)
-            .find_map(|gateway| {
-                let ip = gateway.ipv4?;
-                Some(Bastion {
-                    ip: ip.address,
-                    port: gateway.bastion_port,
-                    zone: zone.to_owned(),
-                })
-            }))
+        Ok(select_bastion(gateways, zone))
     }
 
     fn list_baremetal_private_ips(
@@ -473,6 +463,20 @@ impl Client {
         )?;
         Ok(baremetal_private_ips(ips))
     }
+}
+
+fn select_bastion(gateways: Vec<Gateway>, zone: &str) -> Option<Bastion> {
+    gateways
+        .into_iter()
+        .filter(|gateway| gateway.bastion_enabled)
+        .find_map(|gateway| {
+            let ip = gateway.ipv4?;
+            Some(Bastion {
+                ip: ip.address,
+                port: gateway.bastion_port,
+                zone: zone.to_owned(),
+            })
+        })
 }
 
 fn is_auth_error(error: &FetchError) -> bool {
@@ -834,13 +838,10 @@ mod tests {
         )
         .unwrap();
 
-        let bastion = list
-            .into_parts()
-            .0
-            .into_iter()
-            .filter(|g| g.bastion_enabled)
-            .find_map(|g| g.ipv4.map(|ip| (ip.address, g.bastion_port)));
+        let bastion = select_bastion(list.into_parts().0, "fr-par-1").unwrap();
 
-        assert_eq!(bastion, Some(("5.6.7.8".to_owned(), 61000)));
+        assert_eq!(bastion.ip, "5.6.7.8");
+        assert_eq!(bastion.port, 61000);
+        assert_eq!(bastion.zone, "fr-par-1");
     }
 }

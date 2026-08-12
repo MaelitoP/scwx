@@ -55,8 +55,12 @@ pub fn access_secret(
         )
         .with_context(|| format!("accessing secret {name}"))?;
 
+    decode_secret(name, &version.data)
+}
+
+fn decode_secret(name: &str, data: &str) -> Result<Sensitive> {
     let bytes = base64::engine::general_purpose::STANDARD
-        .decode(&version.data)
+        .decode(data)
         .with_context(|| format!("decoding secret {name}"))?;
     let value = String::from_utf8(bytes).with_context(|| format!("secret {name} is not utf-8"))?;
     Ok(Sensitive::new(
@@ -83,5 +87,16 @@ mod tests {
     fn secret_name_with_a_different_template_shape() {
         let name = secret_name("db/{env}/{db}/{user}", "search", "jo", Environment::Beta);
         assert_eq!(name, "db/BETA/SEARCH/JO");
+    }
+
+    #[test]
+    fn decode_trims_trailing_newlines_and_rejects_garbage() {
+        // "hunter2\n" base64-encoded
+        let decoded = decode_secret("S", "aHVudGVyMgo=").unwrap();
+        assert_eq!(decoded.expose(), "hunter2");
+
+        assert!(decode_secret("S", "not-base64!!!").is_err());
+        // 0xFF 0xFE is valid base64 content but not utf-8
+        assert!(decode_secret("S", "//4=").is_err());
     }
 }

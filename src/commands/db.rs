@@ -156,16 +156,17 @@ fn connect(
         .spawn()
         .context("starting ssh tunnel")?;
 
-    let result = wait_for_port(&mut tunnel_child, local_port).and_then(|()| {
-        eprintln!("connected to {key} ({env}) via 127.0.0.1:{local_port}");
-        let defaults_file = write_mysql_defaults(password.expose())?;
-        let status = Command::new("mysql")
-            .args(mysql_argv(&defaults_file, local_port, &user, &key, mysql))
-            .status()
-            .context("running mysql (is it installed?)");
-        let _ = fs::remove_file(&defaults_file);
-        status
-    });
+    let result =
+        wait_for_port(&mut tunnel_child, local_port, Duration::from_secs(15)).and_then(|()| {
+            eprintln!("connected to {key} ({env}) via 127.0.0.1:{local_port}");
+            let defaults_file = write_mysql_defaults(password.expose())?;
+            let status = Command::new("mysql")
+                .args(mysql_argv(&defaults_file, local_port, &user, &key, mysql))
+                .status()
+                .context("running mysql (is it installed?)");
+            let _ = fs::remove_file(&defaults_file);
+            status
+        });
 
     let _ = tunnel_child.kill();
     let _ = tunnel_child.wait();
@@ -240,9 +241,9 @@ fn free_local_port(preferred: u16) -> Result<u16> {
     }
 }
 
-fn wait_for_port(child: &mut Child, port: u16) -> Result<()> {
+fn wait_for_port(child: &mut Child, port: u16, timeout: Duration) -> Result<()> {
     let address = SocketAddr::from(([127, 0, 0, 1], port));
-    let deadline = Instant::now() + Duration::from_secs(15);
+    let deadline = Instant::now() + timeout;
     loop {
         if let Some(status) = child.try_wait().context("checking ssh tunnel")? {
             bail!("ssh tunnel exited with {status}");
@@ -252,7 +253,7 @@ fn wait_for_port(child: &mut Child, port: u16) -> Result<()> {
         }
         ensure!(
             Instant::now() < deadline,
-            "ssh tunnel did not open port {port} within 15s"
+            "ssh tunnel did not open port {port} within {timeout:?}"
         );
         thread::sleep(Duration::from_millis(100));
     }
@@ -320,6 +321,34 @@ mod tests {
         assert_eq!(preferred_local_port(61000), 61000);
         assert_eq!(preferred_local_port(65535), 65535);
         assert_eq!(preferred_local_port(0), 10000);
+    }
+
+    #[test]
+    fn wait_for_port_reports_a_dead_tunnel() {
+        let mut child = Command::new("sh").args(["-c", "exit 3"]).spawn().unwrap();
+        let error = wait_for_port(&mut child, 1, Duration::from_secs(5)).unwrap_err();
+        assert!(error.to_string().contains("exited"));
+    }
+
+    #[test]
+    fn wait_for_port_times_out_when_the_port_never_opens() {
+        let mut child = Command::new("sleep").arg("5").spawn().unwrap();
+        let error = wait_for_port(&mut child, 1, Duration::from_millis(250)).unwrap_err();
+        let _ = child.kill();
+        let _ = child.wait();
+        assert!(error.to_string().contains("did not open"));
+    }
+
+    #[test]
+    fn wait_for_port_returns_once_the_port_listens() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let mut child = Command::new("sleep").arg("5").spawn().unwrap();
+
+        let result = wait_for_port(&mut child, port, Duration::from_secs(5));
+        let _ = child.kill();
+        let _ = child.wait();
+        result.unwrap();
     }
 
     #[test]

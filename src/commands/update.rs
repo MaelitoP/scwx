@@ -23,12 +23,16 @@ struct Asset {
 }
 
 fn target() -> Result<String> {
-    let os = match env::consts::OS {
+    target_for(env::consts::OS, env::consts::ARCH)
+}
+
+fn target_for(os: &str, arch: &str) -> Result<String> {
+    let os = match os {
         "macos" => "apple-darwin",
         "linux" => "unknown-linux-gnu",
         other => bail!("unsupported os: {other}"),
     };
-    Ok(format!("{}-{os}", env::consts::ARCH))
+    Ok(format!("{arch}-{os}"))
 }
 
 fn parse_version(version: &str) -> Option<[u64; 3]> {
@@ -153,6 +157,19 @@ pub fn run() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn targets_map_to_release_asset_names() {
+        assert_eq!(
+            target_for("macos", "aarch64").unwrap(),
+            "aarch64-apple-darwin"
+        );
+        assert_eq!(
+            target_for("linux", "x86_64").unwrap(),
+            "x86_64-unknown-linux-gnu"
+        );
+        assert!(target_for("windows", "x86_64").is_err());
+    }
 
     #[test]
     fn versions_parse_and_order() {

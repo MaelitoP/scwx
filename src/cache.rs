@@ -166,11 +166,17 @@ mod tests {
     }
 
     #[test]
-    fn version_mismatch_is_ignored() {
+    fn version_mismatch_is_ignored_even_when_fresh() {
         let path = temp_path("version");
+        let now_unix = SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         fs::write(
             &path,
-            r#"{"version": 0, "fetched_at_unix": 99999999999, "inventory": {"resources": [], "bastion": null}}"#,
+            format!(
+                r#"{{"version": 0, "fetched_at_unix": {now_unix}, "inventory": {{"resources": [], "bastion": null}}}}"#
+            ),
         )
         .unwrap();
 
