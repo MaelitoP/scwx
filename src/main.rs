@@ -4,6 +4,7 @@ mod commands;
 mod config;
 mod exec;
 mod inventory;
+mod output;
 mod paths;
 mod picker;
 mod scw;

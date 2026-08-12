@@ -1,10 +1,10 @@
 use anyhow::Result;
 use serde::Serialize;
 
-use crate::cache;
 use crate::cli::Cli;
 use crate::config::Config;
 use crate::inventory::{Environment, Resource};
+use crate::{cache, output};
 
 #[derive(Debug, Serialize)]
 struct ResourceView<'a> {
@@ -55,13 +55,17 @@ pub fn run(cli: &Cli, config: &Config, json: bool, filter: NameFilter, cached: b
 
     if filter.servers {
         for resource in resources.iter().filter(|r| r.kind.is_server()) {
-            println!("{}", resource.display_name(&config.naming));
+            if !output::emit(&resource.display_name(&config.naming))? {
+                break;
+            }
         }
         return Ok(());
     }
     if filter.databases {
         for name in crate::commands::db::names(&resources, config)? {
-            println!("{name}");
+            if !output::emit(&name)? {
+                break;
+            }
         }
         return Ok(());
     }
@@ -70,7 +74,9 @@ pub fn run(cli: &Cli, config: &Config, json: bool, filter: NameFilter, cached: b
             .iter()
             .filter(|r| r.port_forward_enabled(&config.tags))
         {
-            println!("{}", resource.display_name(&config.naming));
+            if !output::emit(&resource.display_name(&config.naming))? {
+                break;
+            }
         }
         return Ok(());
     }
@@ -81,15 +87,14 @@ pub fn run(cli: &Cli, config: &Config, json: bool, filter: NameFilter, cached: b
         .collect();
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&views)?);
+        output::emit(&serde_json::to_string_pretty(&views)?)?;
         return Ok(());
     }
 
-    print_table(&views);
-    Ok(())
+    print_table(&views)
 }
 
-fn print_table(views: &[ResourceView<'_>]) {
+fn print_table(views: &[ResourceView<'_>]) -> Result<()> {
     let rows: Vec<[String; 5]> = views
         .iter()
         .map(|view| {
@@ -111,18 +116,23 @@ fn print_table(views: &[ResourceView<'_>]) {
         }
     }
 
-    print_row(&header.map(str::to_owned), &widths);
-    for row in &rows {
-        print_row(row, &widths);
+    if !print_row(&header.map(str::to_owned), &widths)? {
+        return Ok(());
     }
+    for row in &rows {
+        if !print_row(row, &widths)? {
+            return Ok(());
+        }
+    }
+    Ok(())
 }
 
-fn print_row(cells: &[String; 5], widths: &[usize; 5]) {
+fn print_row(cells: &[String; 5], widths: &[usize; 5]) -> Result<bool> {
     let line = cells
         .iter()
         .zip(widths)
         .map(|(cell, width)| format!("{cell:<width$}"))
         .collect::<Vec<_>>()
         .join("  ");
-    println!("{}", line.trim_end());
+    output::emit(line.trim_end())
 }

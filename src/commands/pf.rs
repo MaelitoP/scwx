@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::cli::{Cli, PfCommand};
 use crate::config::Config;
 use crate::inventory::Resource;
-use crate::{cache, paths, picker, ssh};
+use crate::{cache, output, paths, picker, ssh};
 
 pub fn run(
     cli: &Cli,
@@ -148,7 +148,7 @@ fn start(
     )
     .context("writing tunnel record")?;
 
-    println!("{name}: 127.0.0.1:{local_port} -> {target_label}");
+    output::emit(&format!("{name}: 127.0.0.1:{local_port} -> {target_label}"))?;
     Ok(())
 }
 
@@ -241,10 +241,12 @@ fn list() -> Result<()> {
             }
             MasterState::Alive => {}
         }
-        println!(
+        if !output::emit(&format!(
             "{}  127.0.0.1:{} -> {}",
             record.name, record.local_port, record.target
-        );
+        ))? {
+            return Ok(());
+        }
         printed = true;
     }
     if !printed {
@@ -281,7 +283,7 @@ fn stop(name: Option<&str>) -> Result<()> {
         // bookkeeping, or a live tunnel becomes unstoppable.
         if exited || master_state(&dir, record) != MasterState::Alive {
             remove(&dir, &record.name);
-            println!("stopped {}", record.name);
+            output::emit(&format!("stopped {}", record.name))?;
         } else {
             eprintln!(
                 "warning: {} did not exit; keeping its socket in place",
