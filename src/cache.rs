@@ -1,4 +1,6 @@
 use std::fs;
+use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -44,8 +46,19 @@ pub fn store(path: &Path, inventory: &Inventory, now: SystemTime) -> Result<()> 
     };
     let raw = serde_json::to_string(&file).context("serializing inventory cache")?;
 
-    let temp = path.with_extension("json.tmp");
-    fs::write(&temp, raw).with_context(|| format!("writing cache {}", temp.display()))?;
+    // Per-process temp name so concurrent scwx invocations don't truncate
+    // each other's writes; 0600 because the content maps private network
+    // topology.
+    let temp = path.with_extension(format!("tmp.{}", std::process::id()));
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true).mode(0o600);
+    let mut temp_file = options
+        .open(&temp)
+        .with_context(|| format!("creating cache {}", temp.display()))?;
+    temp_file
+        .write_all(raw.as_bytes())
+        .with_context(|| format!("writing cache {}", temp.display()))?;
+    drop(temp_file);
     fs::rename(&temp, path).with_context(|| format!("replacing cache {}", path.display()))
 }
 
@@ -104,6 +117,19 @@ mod tests {
         fs::remove_file(&path).unwrap();
 
         assert_eq!(loaded.bastion.unwrap().ip, "5.6.7.8");
+    }
+
+    #[test]
+    fn cache_is_written_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path = temp_path("perms");
+        store(&path, &inventory(), SystemTime::now()).unwrap();
+
+        let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        fs::remove_file(&path).unwrap();
+
+        assert_eq!(mode, 0o600);
     }
 
     #[test]
