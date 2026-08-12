@@ -25,11 +25,10 @@ pub struct MysqlOptions<'a> {
 pub fn run(cli: &Cli, config: &Config, name: Option<&str>, mysql: MysqlOptions<'_>) -> Result<()> {
     let env = target_env(cli, config)?;
     let inventory = cache::load_or_fetch(cli.refresh, config)?;
-    let bastion = inventory.bastion()?.clone();
+    let bastion = inventory.require_bastion()?.clone();
 
     let databases: Vec<&Resource> = inventory
         .filtered(Some(env), &config.tags)
-        .into_iter()
         .filter(|resource| is_database(resource, config))
         .collect();
     ensure!(!databases.is_empty(), "no databases tagged for env {env}");
@@ -118,7 +117,7 @@ fn is_database(resource: &Resource, config: &Config) -> bool {
 /// Short database key: display name without the env segment and shard suffix.
 /// `platform-ingestor-prod-search-2` -> `search`.
 fn db_key(resource: &Resource, config: &Config, env: Environment) -> String {
-    let mut key = resource.display_name(&config.naming);
+    let mut key = resource.display_name(&config.naming).to_owned();
     if let Some(rest) = key.strip_prefix(&format!("{env}-")) {
         key = rest.to_owned();
     }
@@ -151,7 +150,7 @@ fn render(databases: &[&Resource], config: &Config, env: Environment) -> Vec<Str
             [
                 db_key(resource, config, env),
                 role,
-                resource.display_name(&config.naming),
+                resource.display_name(&config.naming).to_owned(),
                 resource.zone.clone(),
             ]
         })

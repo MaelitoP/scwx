@@ -100,14 +100,21 @@ pub struct Resource {
     pub endpoint_port: Option<u16>,
 }
 
+fn contains_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
+    !needle.is_empty()
+        && haystack
+            .as_bytes()
+            .windows(needle.len())
+            .any(|window| window.eq_ignore_ascii_case(needle.as_bytes()))
+}
+
 impl Resource {
-    pub fn display_name(&self, naming: &NamingSection) -> String {
-        let stripped = naming
+    pub fn display_name<'a>(&'a self, naming: &NamingSection) -> &'a str {
+        naming
             .strip_prefixes
             .iter()
             .find_map(|prefix| self.name.strip_prefix(prefix))
-            .unwrap_or(&self.name);
-        stripped.to_owned()
+            .unwrap_or(&self.name)
     }
 
     pub fn env(&self, tags: &TagsSection) -> Option<Environment> {
@@ -138,12 +145,8 @@ impl Resource {
     }
 
     pub fn matches(&self, query: &str, naming: &NamingSection) -> bool {
-        let query = query.to_ascii_lowercase();
-        self.name.to_ascii_lowercase().contains(&query)
-            || self
-                .display_name(naming)
-                .to_ascii_lowercase()
-                .contains(&query)
+        contains_ignore_ascii_case(&self.name, query)
+            || contains_ignore_ascii_case(self.display_name(naming), query)
     }
 }
 
@@ -163,18 +166,25 @@ impl Bastion {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Inventory {
     pub resources: Vec<Resource>,
-    pub bastion: Option<Bastion>,
+    bastion: Option<Bastion>,
 }
 
 impl Inventory {
-    pub fn filtered(&self, env: Option<Environment>, tags: &TagsSection) -> Vec<&Resource> {
-        self.resources
-            .iter()
-            .filter(|resource| env.is_none() || resource.env(tags) == env)
-            .collect()
+    pub fn new(resources: Vec<Resource>, bastion: Option<Bastion>) -> Self {
+        Self { resources, bastion }
     }
 
-    pub fn bastion(&self) -> anyhow::Result<&Bastion> {
+    pub fn filtered<'a>(
+        &'a self,
+        env: Option<Environment>,
+        tags: &'a TagsSection,
+    ) -> impl Iterator<Item = &'a Resource> {
+        self.resources
+            .iter()
+            .filter(move |resource| env.is_none() || resource.env(tags) == env)
+    }
+
+    pub fn require_bastion(&self) -> anyhow::Result<&Bastion> {
         self.bastion
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("no bastion-enabled vpc gateway found in the inventory"))
@@ -265,19 +275,19 @@ mod tests {
     #[test]
     fn filtered_keeps_only_the_requested_env() {
         let tags = TagsSection::default();
-        let inventory = Inventory {
-            resources: vec![
+        let inventory = Inventory::new(
+            vec![
                 resource("prod-a", &["Env:Prod"]),
                 resource("beta-a", &["Env:Beta"]),
                 resource("untagged", &[]),
             ],
-            bastion: None,
-        };
+            None,
+        );
 
-        let prod = inventory.filtered(Some(Environment::Prod), &tags);
+        let prod: Vec<_> = inventory.filtered(Some(Environment::Prod), &tags).collect();
         assert_eq!(prod.len(), 1);
         assert_eq!(prod[0].name, "prod-a");
 
-        assert_eq!(inventory.filtered(None, &tags).len(), 3);
+        assert_eq!(inventory.filtered(None, &tags).count(), 3);
     }
 }

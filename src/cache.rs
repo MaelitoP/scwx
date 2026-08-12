@@ -97,14 +97,14 @@ mod tests {
     }
 
     fn inventory() -> Inventory {
-        Inventory {
-            resources: vec![],
-            bastion: Some(Bastion {
+        Inventory::new(
+            vec![],
+            Some(Bastion {
                 ip: "5.6.7.8".to_owned(),
                 port: 61000,
                 zone: "fr-par-1".to_owned(),
             }),
-        }
+        )
     }
 
     #[test]
@@ -116,7 +116,7 @@ mod tests {
         let loaded = load_fresh(&path, Duration::from_secs(300), now).unwrap();
         fs::remove_file(&path).unwrap();
 
-        assert_eq!(loaded.bastion.unwrap().ip, "5.6.7.8");
+        assert_eq!(loaded.require_bastion().unwrap().ip, "5.6.7.8");
     }
 
     #[test]

@@ -13,10 +13,9 @@ const BASTION_ALIAS: &str = "scwx-bastion";
 
 pub fn run(cli: &Cli, config: &Config) -> Result<()> {
     let inventory = cache::load_or_fetch(cli.refresh, config)?;
-    let bastion = inventory.bastion()?;
+    let bastion = inventory.require_bastion()?;
     let servers: Vec<&Resource> = inventory
         .filtered(cli.env, &config.tags)
-        .into_iter()
         .filter(|resource| resource.kind.is_server())
         .collect();
 
@@ -82,14 +81,14 @@ fn render(servers: &[&Resource], bastion: &Bastion, config: &Config) -> Result<(
     let mut seen = HashSet::new();
     for server in servers {
         let alias = server.display_name(&config.naming);
-        if !is_safe_host_token(&alias) || !is_safe_host_token(&server.name) {
+        if !is_safe_host_token(alias) || !is_safe_host_token(&server.name) {
             eprintln!(
                 "warning: skipping {}: unsafe name for ssh config",
                 server.name
             );
             continue;
         }
-        if !seen.insert(alias.clone()) {
+        if !seen.insert(alias.to_owned()) {
             continue;
         }
         write!(

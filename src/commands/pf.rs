@@ -44,11 +44,10 @@ fn start(
     remote_port: Option<u16>,
 ) -> Result<()> {
     let inventory = cache::load_or_fetch(cli.refresh, config)?;
-    let bastion = inventory.bastion()?.clone();
+    let bastion = inventory.require_bastion()?.clone();
 
     let candidates: Vec<&Resource> = inventory
         .filtered(cli.env, &config.tags)
-        .into_iter()
         .filter(|resource| resource.port_forward_enabled(&config.tags) || remote_port.is_some())
         .collect();
     ensure!(

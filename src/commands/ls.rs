@@ -25,7 +25,7 @@ impl<'a> ResourceView<'a> {
             kind: resource.kind.label(),
             id: &resource.id,
             name: &resource.name,
-            display_name: resource.display_name(&config.naming),
+            display_name: resource.display_name(&config.naming).to_owned(),
             zone: &resource.zone,
             env: resource.env(&config.tags),
             tags: &resource.tags,
@@ -51,11 +51,11 @@ pub fn run(cli: &Cli, config: &Config, json: bool, filter: NameFilter, cached: b
     } else {
         cache::load_or_fetch(cli.refresh, config)?
     };
-    let resources = inventory.filtered(cli.env, &config.tags);
+    let resources: Vec<&Resource> = inventory.filtered(cli.env, &config.tags).collect();
 
     if filter.servers {
         for resource in resources.iter().filter(|r| r.kind.is_server()) {
-            if !output::emit(&resource.display_name(&config.naming))? {
+            if !output::emit(resource.display_name(&config.naming))? {
                 break;
             }
         }
@@ -74,7 +74,7 @@ pub fn run(cli: &Cli, config: &Config, json: bool, filter: NameFilter, cached: b
             .iter()
             .filter(|r| r.port_forward_enabled(&config.tags))
         {
-            if !output::emit(&resource.display_name(&config.naming))? {
+            if !output::emit(resource.display_name(&config.naming))? {
                 break;
             }
         }

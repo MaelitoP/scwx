@@ -8,10 +8,9 @@ use crate::{cache, exec, ssh, tmux};
 
 pub fn run(cli: &Cli, config: &Config, query: Option<&str>) -> Result<()> {
     let inventory = cache::load_or_fetch(cli.refresh, config)?;
-    let bastion = inventory.bastion()?.clone();
+    let bastion = inventory.require_bastion()?.clone();
     let servers: Vec<&Resource> = inventory
         .filtered(cli.env, &config.tags)
-        .into_iter()
         .filter(|resource| resource.kind.is_server())
         .collect();
     ensure!(!servers.is_empty(), "no running servers in the inventory");
@@ -45,7 +44,6 @@ fn no_server_error(
 ) -> anyhow::Error {
     let unreachable_match = inventory
         .filtered(cli.env, &config.tags)
-        .into_iter()
         .find(|resource| !resource.kind.is_server() && resource.matches(query, &config.naming));
     match unreachable_match {
         Some(resource) => {
@@ -70,7 +68,7 @@ fn open(
     bastion: &crate::inventory::Bastion,
 ) -> Result<()> {
     let argv = ssh::session(&resource.name, config, bastion)?.into_argv();
-    let title = resource.display_name(&config.naming);
+    let title = resource.display_name(&config.naming).to_owned();
     match outcome.placement() {
         Some(placement) if tmux::inside_tmux() => tmux::open(placement, &title, &argv),
         _ => exec::replace(&argv),

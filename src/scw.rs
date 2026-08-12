@@ -613,7 +613,7 @@ pub fn fetch_inventory(credentials: &Credentials, config: &Config) -> Result<Fet
 
         resources.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(Fetched {
-            inventory: Inventory { resources, bastion },
+            inventory: Inventory::new(resources, bastion),
             complete,
         })
     })

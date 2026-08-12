@@ -12,7 +12,7 @@ pub fn render_resources(resources: &[&Resource], config: &Config) -> Vec<String>
         .iter()
         .map(|resource| {
             [
-                resource.display_name(&config.naming),
+                resource.display_name(&config.naming).to_owned(),
                 resource.kind.label().to_owned(),
                 resource
                     .env(&config.tags)
