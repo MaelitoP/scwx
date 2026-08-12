@@ -100,10 +100,6 @@ mod tests {
     use super::*;
     use crate::inventory::{Bastion, Inventory};
 
-    fn temp_path(name: &str) -> std::path::PathBuf {
-        std::env::temp_dir().join(format!("scwx-cache-{name}-{}.json", std::process::id()))
-    }
-
     fn inventory() -> Inventory {
         Inventory::new(
             vec![],
@@ -115,15 +111,21 @@ mod tests {
         )
     }
 
+    fn now_unix() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+    }
+
     #[test]
     fn roundtrip_within_ttl_returns_the_inventory() {
-        let path = temp_path("roundtrip");
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("inventory.json");
         let now = SystemTime::now();
         store(&path, &inventory(), now).unwrap();
 
         let loaded = load_fresh(&path, Duration::from_secs(300), now).unwrap();
-        fs::remove_file(&path).unwrap();
-
         assert_eq!(loaded.require_bastion().unwrap().ip, "5.6.7.8");
     }
 
@@ -131,70 +133,56 @@ mod tests {
     fn cache_is_written_owner_only() {
         use std::os::unix::fs::PermissionsExt;
 
-        let path = temp_path("perms");
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("inventory.json");
         store(&path, &inventory(), SystemTime::now()).unwrap();
 
         let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
-        fs::remove_file(&path).unwrap();
-
         assert_eq!(mode, 0o600);
     }
 
     #[test]
-    fn expired_cache_is_ignored() {
-        let path = temp_path("expired");
+    fn stale_or_future_timestamps_are_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("inventory.json");
         let stored_at = SystemTime::now();
         store(&path, &inventory(), stored_at).unwrap();
 
-        let later = stored_at + Duration::from_secs(301);
-        let loaded = load_fresh(&path, Duration::from_secs(300), later);
-        fs::remove_file(&path).unwrap();
+        let expired = stored_at + Duration::from_secs(301);
+        assert!(load_fresh(&path, Duration::from_secs(300), expired).is_none());
 
-        assert!(loaded.is_none());
+        let before_write = stored_at - Duration::from_secs(3600);
+        assert!(load_fresh(&path, Duration::from_secs(300), before_write).is_none());
+
+        assert!(load_fresh(&path, Duration::from_secs(300), stored_at).is_some());
     }
 
     #[test]
-    fn cache_written_in_the_future_is_ignored() {
-        let path = temp_path("future");
-        let stored_at = SystemTime::now() + Duration::from_secs(3600);
-        store(&path, &inventory(), stored_at).unwrap();
-
-        let loaded = load_fresh(&path, Duration::from_secs(300), SystemTime::now());
-        fs::remove_file(&path).unwrap();
-
-        assert!(loaded.is_none());
-    }
-
-    #[test]
-    fn version_mismatch_is_ignored_even_when_fresh() {
-        let path = temp_path("version");
-        let now_unix = SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        fs::write(
-            &path,
-            format!(
-                r#"{{"version": 0, "fetched_at_unix": {now_unix}, "inventory": {{"resources": [], "bastion": null}}}}"#
+    fn unusable_cache_content_is_ignored() {
+        let empty_inventory = r#"{"resources": [], "bastion": null}"#;
+        let cases = [
+            (
+                "wrong version, fresh timestamp",
+                format!(
+                    r#"{{"version": 0, "fetched_at_unix": {}, "inventory": {empty_inventory}}}"#,
+                    now_unix()
+                ),
             ),
-        )
-        .unwrap();
+            ("corrupt json", "not json".to_owned()),
+            (
+                "missing fields",
+                format!(r#"{{"version": {CACHE_VERSION}}}"#),
+            ),
+        ];
 
-        let loaded = load_fresh(&path, Duration::from_secs(300), SystemTime::now());
-        fs::remove_file(&path).unwrap();
+        for (label, content) in cases {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("inventory.json");
+            fs::write(&path, content).unwrap();
 
-        assert!(loaded.is_none());
-    }
-
-    #[test]
-    fn corrupt_cache_is_ignored() {
-        let path = temp_path("corrupt");
-        fs::write(&path, "not json").unwrap();
-
-        let loaded = load_fresh(&path, Duration::from_secs(300), SystemTime::now());
-        fs::remove_file(&path).unwrap();
-
-        assert!(loaded.is_none());
+            let loaded = load_fresh(&path, Duration::from_secs(300), SystemTime::now());
+            assert!(loaded.is_none(), "case '{label}' should be rejected");
+        }
     }
 
     #[test]
