@@ -221,7 +221,7 @@ fn connect(
         target_host: host,
         remote_port,
     };
-    let argv = ssh::tunnel_argv(&tunnel, config, bastion)?;
+    let argv = ssh::bastion_tunnel(&tunnel, config, bastion)?.into_argv();
     // The tunnel must not read stdin: piped queries belong to mysql.
     let mut tunnel_child = Command::new(&argv[0])
         .args(&argv[1..])

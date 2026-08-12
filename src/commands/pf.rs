@@ -112,16 +112,15 @@ fn start(
         }
     }
 
-    let (argv, target_label, destination) = if target.kind.is_server() {
+    let (command, target_label) = if target.kind.is_server() {
         let tunnel = ssh::Tunnel {
             local_port,
             target_host: &target.name,
             remote_port,
         };
         (
-            ssh::server_tunnel_argv(&tunnel, config, &bastion)?,
+            ssh::server_tunnel(&tunnel, config, &bastion)?,
             format!("{}:{remote_port}", target.name),
-            format!("{}@{}", config.ssh.user, target.name),
         )
     } else {
         let host = target
@@ -134,12 +133,12 @@ fn start(
             remote_port,
         };
         (
-            ssh::tunnel_argv(&tunnel, config, &bastion)?,
+            ssh::bastion_tunnel(&tunnel, config, &bastion)?,
             format!("{host}:{remote_port}"),
-            bastion.destination(&config.bastion.user),
         )
     };
-    let argv = ssh::with_control_socket(argv, &socket);
+    let destination = command.destination().to_owned();
+    let argv = command.with_control_socket(&socket).into_argv();
 
     let status = Command::new(&argv[0])
         .args(&argv[1..])

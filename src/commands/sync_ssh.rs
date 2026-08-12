@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use crate::cli::Cli;
 use crate::config::Config;
 use crate::inventory::{Bastion, Resource};
-use crate::{cache, paths};
+use crate::{cache, paths, ssh};
 
 const BASTION_ALIAS: &str = "scwx-bastion";
 
@@ -77,9 +77,7 @@ fn render(servers: &[&Resource], bastion: &Bastion, config: &Config) -> Result<(
         "Host {BASTION_ALIAS}\n    HostName {}\n    Port {}\n    User {}\n{key_lines}",
         bastion.ip, bastion.port, config.bastion.user
     )?;
-    out.push_str(
-        "    StrictHostKeyChecking no\n    UserKnownHostsFile /dev/null\n    LogLevel ERROR\n",
-    );
+    out.push_str(&ssh::option_config_lines(&ssh::HARDENING_OPTIONS));
 
     let mut seen = HashSet::new();
     for server in servers {
@@ -99,9 +97,7 @@ fn render(servers: &[&Resource], bastion: &Bastion, config: &Config) -> Result<(
             "\nHost {alias}\n    HostName {}\n    User {}\n    ProxyJump {BASTION_ALIAS}\n{key_lines}",
             server.name, config.ssh.user
         )?;
-        out.push_str(
-            "    StrictHostKeyChecking no\n    UserKnownHostsFile /dev/null\n    LogLevel ERROR\n",
-        );
+        out.push_str(&ssh::option_config_lines(&ssh::HARDENING_OPTIONS));
     }
     Ok((out, seen.len()))
 }
