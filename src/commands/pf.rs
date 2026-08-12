@@ -5,14 +5,14 @@ use std::process::{Command, Stdio};
 use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
 
-use crate::cli::{Cli, PfCommand};
+use crate::cli::{PfCommand, Scope};
 use crate::config::Config;
 use crate::inventory::Resource;
 use crate::picker::{self, Selection};
 use crate::{cache, output, paths, ssh};
 
 pub fn run(
-    cli: &Cli,
+    scope: &Scope,
     config: &Config,
     command: Option<&PfCommand>,
     query: Option<&str>,
@@ -22,7 +22,7 @@ pub fn run(
     match command {
         Some(PfCommand::Ls) => list(),
         Some(PfCommand::Stop { name }) => stop(name.as_deref()),
-        None => start(cli, config, query, local_port, remote_port),
+        None => start(scope, config, query, local_port, remote_port),
     }
 }
 
@@ -37,17 +37,17 @@ struct TunnelRecord {
 }
 
 fn start(
-    cli: &Cli,
+    scope: &Scope,
     config: &Config,
     query: Option<&str>,
     local_port: Option<u16>,
     remote_port: Option<u16>,
 ) -> Result<()> {
-    let inventory = cache::load_or_fetch(cli.refresh, config)?;
+    let inventory = cache::load_or_fetch(scope.freshness, config)?;
     let bastion = inventory.require_bastion()?.clone();
 
     let candidates: Vec<&Resource> = inventory
-        .filtered(cli.env, &config.tags)
+        .filtered(scope.env, &config.tags)
         .filter(|resource| resource.port_forward_enabled(&config.tags) || remote_port.is_some())
         .collect();
     ensure!(

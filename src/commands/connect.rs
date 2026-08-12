@@ -1,16 +1,16 @@
 use anyhow::{Result, ensure};
 
-use crate::cli::Cli;
+use crate::cli::Scope;
 use crate::config::Config;
 use crate::inventory::Resource;
 use crate::picker::{self, PickOutcome, Selection};
 use crate::{cache, exec, ssh, tmux};
 
-pub fn run(cli: &Cli, config: &Config, query: Option<&str>) -> Result<()> {
-    let inventory = cache::load_or_fetch(cli.refresh, config)?;
+pub fn run(scope: &Scope, config: &Config, query: Option<&str>) -> Result<()> {
+    let inventory = cache::load_or_fetch(scope.freshness, config)?;
     let bastion = inventory.require_bastion()?.clone();
     let servers: Vec<&Resource> = inventory
-        .filtered(cli.env, &config.tags)
+        .filtered(scope.env, &config.tags)
         .filter(|resource| resource.kind.is_server())
         .collect();
     ensure!(!servers.is_empty(), "no running servers in the inventory");
@@ -29,7 +29,7 @@ pub fn run(cli: &Cli, config: &Config, query: Option<&str>) -> Result<()> {
         Selection::Cancelled => Ok(()),
         Selection::NoMatch => Err(no_server_error(
             &inventory,
-            cli,
+            scope,
             config,
             query.unwrap_or_default(),
         )),
@@ -38,12 +38,12 @@ pub fn run(cli: &Cli, config: &Config, query: Option<&str>) -> Result<()> {
 
 fn no_server_error(
     inventory: &crate::inventory::Inventory,
-    cli: &Cli,
+    scope: &Scope,
     config: &Config,
     query: &str,
 ) -> anyhow::Error {
     let unreachable_match = inventory
-        .filtered(cli.env, &config.tags)
+        .filtered(scope.env, &config.tags)
         .find(|resource| !resource.kind.is_server() && resource.matches(query, &config.naming));
     match unreachable_match {
         Some(resource) => {

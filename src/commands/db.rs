@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail, ensure};
 
-use crate::cli::Cli;
+use crate::cli::Scope;
 use crate::config::{Config, Credentials};
 use crate::inventory::{Bastion, Environment, Resource, ResourceKind};
 use crate::picker::{self, PickOutcome, Selection};
@@ -22,9 +22,14 @@ pub struct MysqlOptions<'a> {
     pub extra_args: &'a [String],
 }
 
-pub fn run(cli: &Cli, config: &Config, name: Option<&str>, mysql: MysqlOptions<'_>) -> Result<()> {
-    let env = target_env(cli, config)?;
-    let inventory = cache::load_or_fetch(cli.refresh, config)?;
+pub fn run(
+    scope: &Scope,
+    config: &Config,
+    name: Option<&str>,
+    mysql: MysqlOptions<'_>,
+) -> Result<()> {
+    let env = scope.env.unwrap_or(config.db.default_env);
+    let inventory = cache::load_or_fetch(scope.freshness, config)?;
     let bastion = inventory.require_bastion()?.clone();
 
     let databases: Vec<&Resource> = inventory
@@ -78,12 +83,8 @@ pub fn run(cli: &Cli, config: &Config, name: Option<&str>, mysql: MysqlOptions<'
 }
 
 /// Unique database keys for the configured default env, for shell completion.
-pub fn names(resources: &[&Resource], config: &Config) -> Result<Vec<String>> {
-    let env: Environment = config
-        .db
-        .default_env
-        .parse()
-        .with_context(|| format!("invalid db.default_env '{}'", config.db.default_env))?;
+pub fn names(resources: &[&Resource], config: &Config) -> Vec<String> {
+    let env = config.db.default_env;
     let mut names: Vec<String> = resources
         .iter()
         .filter(|resource| is_database(resource, config))
@@ -92,18 +93,7 @@ pub fn names(resources: &[&Resource], config: &Config) -> Result<Vec<String>> {
         .collect();
     names.sort();
     names.dedup();
-    Ok(names)
-}
-
-fn target_env(cli: &Cli, config: &Config) -> Result<Environment> {
-    match cli.env {
-        Some(env) => Ok(env),
-        None => config
-            .db
-            .default_env
-            .parse()
-            .with_context(|| format!("invalid db.default_env '{}'", config.db.default_env)),
-    }
+    names
 }
 
 fn is_database(resource: &Resource, config: &Config) -> bool {

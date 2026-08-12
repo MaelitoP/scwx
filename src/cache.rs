@@ -68,11 +68,19 @@ pub fn load_ignoring_ttl() -> Result<Option<Inventory>> {
     Ok(load_fresh(&path, Duration::MAX, SystemTime::now()))
 }
 
-pub fn load_or_fetch(refresh: bool, config: &Config) -> Result<Inventory> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Freshness {
+    CacheOk,
+    Refresh,
+}
+
+pub fn load_or_fetch(freshness: Freshness, config: &Config) -> Result<Inventory> {
     let path = paths::cache_file()?;
     let ttl = Duration::from_secs(config.cache.ttl_seconds);
 
-    if !refresh && let Some(inventory) = load_fresh(&path, ttl, SystemTime::now()) {
+    if freshness == Freshness::CacheOk
+        && let Some(inventory) = load_fresh(&path, ttl, SystemTime::now())
+    {
         return Ok(inventory);
     }
 

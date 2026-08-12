@@ -6,6 +6,7 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
+use crate::inventory::Environment;
 use crate::sensitive::Sensitive;
 
 #[derive(Debug, Default, Deserialize)]
@@ -116,7 +117,7 @@ pub struct DbSection {
     pub secret_name_template: String,
     /// Database user; defaults to the OS user with dots replaced by underscores.
     pub user: Option<String>,
-    pub default_env: String,
+    pub default_env: Environment,
     /// Prefixes stripped from the database key, e.g. "db-" so that
     /// db-matched-article-1 resolves the MATCHED-ARTICLE secret.
     pub strip_prefixes: Vec<String>,
@@ -128,7 +129,7 @@ impl Default for DbSection {
             secret_project_id: None,
             secret_name_template: "{db}-{user}-PWD-{env}".to_owned(),
             user: None,
-            default_env: "prod".to_owned(),
+            default_env: Environment::Prod,
             strip_prefixes: vec!["db-".to_owned()],
         }
     }

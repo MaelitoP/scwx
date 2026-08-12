@@ -4,18 +4,18 @@ use std::fs;
 
 use anyhow::{Context, Result};
 
-use crate::cli::Cli;
+use crate::cli::Scope;
 use crate::config::Config;
 use crate::inventory::{Bastion, Resource};
 use crate::{cache, paths, ssh};
 
 const BASTION_ALIAS: &str = "scwx-bastion";
 
-pub fn run(cli: &Cli, config: &Config) -> Result<()> {
-    let inventory = cache::load_or_fetch(cli.refresh, config)?;
+pub fn run(scope: &Scope, config: &Config) -> Result<()> {
+    let inventory = cache::load_or_fetch(scope.freshness, config)?;
     let bastion = inventory.require_bastion()?;
     let servers: Vec<&Resource> = inventory
-        .filtered(cli.env, &config.tags)
+        .filtered(scope.env, &config.tags)
         .filter(|resource| resource.kind.is_server())
         .collect();
 

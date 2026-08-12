@@ -23,6 +23,7 @@ use crate::config::Config;
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = Config::load(&paths::config_file()?)?;
+    let scope = cli.scope();
     match cli.command {
         Command::Ls {
             json,
@@ -31,20 +32,23 @@ fn main() -> Result<()> {
             pf_names,
             cached,
         } => {
-            let filter = commands::ls::NameFilter {
-                servers: names,
-                databases: db_names,
-                forwardable: pf_names,
-            };
-            commands::ls::run(&cli, &config, json, filter, cached)
+            let names = [
+                names.then_some(commands::ls::NameOutput::Servers),
+                db_names.then_some(commands::ls::NameOutput::Databases),
+                pf_names.then_some(commands::ls::NameOutput::Forwardable),
+            ]
+            .into_iter()
+            .flatten()
+            .next();
+            commands::ls::run(&scope, &config, json, names, cached)
         }
-        Command::Connect { ref query } => commands::connect::run(&cli, &config, query.as_deref()),
+        Command::Connect { ref query } => commands::connect::run(&scope, &config, query.as_deref()),
         Command::Db {
             ref name,
             ref execute,
             ref mysql_args,
         } => commands::db::run(
-            &cli,
+            &scope,
             &config,
             name.as_deref(),
             commands::db::MysqlOptions {
@@ -58,14 +62,14 @@ fn main() -> Result<()> {
             local_port,
             remote_port,
         } => commands::pf::run(
-            &cli,
+            &scope,
             &config,
             command.as_ref(),
             query.as_deref(),
             local_port,
             remote_port,
         ),
-        Command::SyncSsh => commands::sync_ssh::run(&cli, &config),
+        Command::SyncSsh => commands::sync_ssh::run(&scope, &config),
         Command::Completions { shell } => commands::completions::run(shell),
         Command::Update => commands::update::run(),
     }

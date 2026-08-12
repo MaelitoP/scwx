@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 
+use crate::cache::Freshness;
 use crate::inventory::Environment;
 
 #[derive(Debug, Parser)]
@@ -19,6 +20,26 @@ pub struct Cli {
     /// Filter resources by environment
     #[arg(long, global = true, value_enum)]
     pub env: Option<Environment>,
+}
+
+/// The two cross-command inputs every inventory-backed command needs.
+#[derive(Debug, Clone, Copy)]
+pub struct Scope {
+    pub env: Option<Environment>,
+    pub freshness: Freshness,
+}
+
+impl Cli {
+    pub fn scope(&self) -> Scope {
+        Scope {
+            env: self.env,
+            freshness: if self.refresh {
+                Freshness::Refresh
+            } else {
+                Freshness::CacheOk
+            },
+        }
+    }
 }
 
 #[derive(Debug, Subcommand)]
