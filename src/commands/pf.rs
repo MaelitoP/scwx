@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 use crate::cli::{Cli, PfCommand};
 use crate::config::Config;
 use crate::inventory::Resource;
-use crate::{cache, output, paths, picker, ssh};
+use crate::picker::{self, Selection};
+use crate::{cache, output, paths, ssh};
 
 pub fn run(
     cli: &Cli,
@@ -48,10 +49,7 @@ fn start(
     let candidates: Vec<&Resource> = inventory
         .filtered(cli.env, &config.tags)
         .into_iter()
-        .filter(|resource| {
-            resource.port_forward_enabled(&config.tags)
-                || (remote_port.is_some() && resource.matches(query.unwrap_or(""), &config.naming))
-        })
+        .filter(|resource| resource.port_forward_enabled(&config.tags) || remote_port.is_some())
         .collect();
     ensure!(
         !candidates.is_empty(),
@@ -59,26 +57,21 @@ fn start(
         config.tags.port_forward_enabled
     );
 
-    let target = match query {
-        Some(query) => {
-            let matches: Vec<&Resource> = candidates
-                .iter()
-                .copied()
-                .filter(|resource| resource.matches(query, &config.naming))
-                .collect();
-            match matches.len() {
-                0 => bail!("no forwardable resource matches '{query}'"),
-                1 => matches[0],
-                _ => match pick(&matches, config, query)? {
-                    Some(resource) => resource,
-                    None => return Ok(()),
-                },
-            }
-        }
-        None => match pick(&candidates, config, "")? {
-            Some(resource) => resource,
-            None => return Ok(()),
-        },
+    let lines = picker::render_resources(&candidates, config);
+    let target = match picker::select(
+        &candidates,
+        &lines,
+        "Forward a port to",
+        query,
+        &config.naming,
+        false,
+    )? {
+        Selection::Direct(resource) | Selection::Picked(resource, _) => resource,
+        Selection::NoMatch => bail!(
+            "no forwardable resource matches '{}'",
+            query.unwrap_or_default()
+        ),
+        Selection::Cancelled => return Ok(()),
     };
 
     let remote_port = remote_port
@@ -169,23 +162,6 @@ fn start(
 
     output::emit(&format!("{name}: 127.0.0.1:{local_port} -> {target_label}"))?;
     Ok(())
-}
-
-fn pick<'a>(
-    resources: &[&'a Resource],
-    config: &Config,
-    query: &str,
-) -> Result<Option<&'a Resource>> {
-    let lines = picker::render_resources(resources, config);
-    let query = (!query.is_empty()).then_some(query);
-    picker::pick_plain(&lines, "Forward a port to", query)?
-        .map(|index| {
-            resources
-                .get(index)
-                .copied()
-                .context("fzf returned an out-of-range selection")
-        })
-        .transpose()
 }
 
 fn socket_path(dir: &Path, name: &str) -> PathBuf {

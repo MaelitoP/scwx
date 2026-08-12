@@ -3,7 +3,7 @@ use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, bail};
 
-use crate::config::Config;
+use crate::config::{Config, NamingSection};
 use crate::inventory::Resource;
 
 pub fn render_resources(resources: &[&Resource], config: &Config) -> Vec<String> {
@@ -57,6 +57,64 @@ pub struct Pick {
 }
 
 const KEY_LEGEND: &str = "enter=window  ctrl-s=split  ctrl-v=vsplit  ctrl-o=here";
+
+#[derive(Debug)]
+pub enum Selection<'a> {
+    /// The query identified exactly one resource without a picker.
+    Direct(&'a Resource),
+    Picked(&'a Resource, PickOutcome),
+    /// The query matched nothing; the caller owns the error message.
+    NoMatch,
+    Cancelled,
+}
+
+/// The shared resolve-a-query-or-pick flow: an exact name match wins, a
+/// unique substring match connects directly, anything else opens the picker
+/// preseeded with the query. `lines` must align with `candidates`.
+pub fn select<'a>(
+    candidates: &[&'a Resource],
+    lines: &[String],
+    header: &str,
+    query: Option<&str>,
+    naming: &NamingSection,
+    with_placement_keys: bool,
+) -> Result<Selection<'a>> {
+    if let Some(query) = query {
+        let exact: Vec<&&Resource> = candidates
+            .iter()
+            .filter(|resource| resource.name == query)
+            .collect();
+        if let [resource] = exact.as_slice() {
+            return Ok(Selection::Direct(resource));
+        }
+
+        let matched: Vec<&&Resource> = candidates
+            .iter()
+            .filter(|resource| resource.matches(query, naming))
+            .collect();
+        match matched.as_slice() {
+            [] => return Ok(Selection::NoMatch),
+            [resource] => return Ok(Selection::Direct(resource)),
+            _ => {}
+        }
+    }
+
+    let pick = if with_placement_keys {
+        pick(lines, header, query)?
+    } else {
+        pick_plain(lines, header, query)?.map(|index| Pick {
+            index,
+            outcome: PickOutcome::Inline,
+        })
+    };
+    let Some(pick) = pick else {
+        return Ok(Selection::Cancelled);
+    };
+    let resource = candidates
+        .get(pick.index)
+        .context("fzf returned an out-of-range selection")?;
+    Ok(Selection::Picked(resource, pick.outcome))
+}
 
 /// Runs fzf over pre-rendered lines; returns the picked line index and the
 /// key-selected outcome, or None when the picker is cancelled.
@@ -160,6 +218,51 @@ fn parse_output(stdout: &str) -> Result<Pick> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::inventory::ResourceKind;
+
+    fn resource(name: &str) -> Resource {
+        Resource {
+            kind: ResourceKind::Instance,
+            id: "id".to_owned(),
+            name: name.to_owned(),
+            zone: "fr-par-1".to_owned(),
+            tags: vec![],
+            endpoint_ip: None,
+            endpoint_port: None,
+        }
+    }
+
+    #[test]
+    fn select_resolves_a_unique_substring_match_directly() {
+        let naming = NamingSection::default();
+        let a = resource("platform-perco-1");
+        let b = resource("platform-api-1");
+        let candidates = vec![&a, &b];
+
+        let selection = select(&candidates, &[], "h", Some("perco"), &naming, true).unwrap();
+        assert!(matches!(selection, Selection::Direct(r) if r.name == "platform-perco-1"));
+    }
+
+    #[test]
+    fn select_prefers_an_exact_name_over_substring_ambiguity() {
+        let naming = NamingSection::default();
+        let a = resource("api");
+        let b = resource("api-1");
+        let candidates = vec![&a, &b];
+
+        let selection = select(&candidates, &[], "h", Some("api"), &naming, true).unwrap();
+        assert!(matches!(selection, Selection::Direct(r) if r.name == "api"));
+    }
+
+    #[test]
+    fn select_reports_no_match_for_an_unknown_query() {
+        let naming = NamingSection::default();
+        let a = resource("api-1");
+        let candidates = vec![&a];
+
+        let selection = select(&candidates, &[], "h", Some("redis"), &naming, true).unwrap();
+        assert!(matches!(selection, Selection::NoMatch));
+    }
 
     #[test]
     fn enter_maps_to_window_and_keys_to_splits() {

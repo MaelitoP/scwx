@@ -1,9 +1,9 @@
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Result, ensure};
 
 use crate::cli::Cli;
 use crate::config::Config;
 use crate::inventory::Resource;
-use crate::picker::{self, PickOutcome};
+use crate::picker::{self, PickOutcome, Selection};
 use crate::{cache, exec, ssh, tmux};
 
 pub fn run(cli: &Cli, config: &Config, query: Option<&str>) -> Result<()> {
@@ -16,51 +16,51 @@ pub fn run(cli: &Cli, config: &Config, query: Option<&str>) -> Result<()> {
         .collect();
     ensure!(!servers.is_empty(), "no running servers in the inventory");
 
-    if let Some(query) = query {
-        let matches: Vec<&Resource> = servers
-            .iter()
-            .copied()
-            .filter(|resource| resource.matches(query, &config.naming))
-            .collect();
-        match matches.len() {
-            0 => {
-                let unreachable_match =
-                    inventory
-                        .filtered(cli.env, &config.tags)
-                        .into_iter()
-                        .find(|resource| {
-                            !resource.kind.is_server() && resource.matches(query, &config.naming)
-                        });
-                match unreachable_match {
-                    Some(resource) => {
-                        let name = resource.display_name(&config.naming);
-                        let hint = match resource.kind {
-                            crate::inventory::ResourceKind::Rdb => {
-                                format!("scwx db {name}")
-                            }
-                            _ => format!("scwx pf {name}"),
-                        };
-                        bail!(
-                            "{name} is a {} and has no ssh; try `{hint}`",
-                            resource.kind.label()
-                        )
-                    }
-                    None => bail!("no server matches '{query}'"),
-                }
-            }
-            1 => return open(matches[0], PickOutcome::Inline, config, &bastion),
-            _ => {}
-        }
-    }
-
     let lines = picker::render_resources(&servers, config);
-    let Some(pick) = picker::pick(&lines, "Connect to server", query)? else {
-        return Ok(());
-    };
-    let server = servers
-        .get(pick.index)
-        .context("fzf returned an out-of-range selection")?;
-    open(server, pick.outcome, config, &bastion)
+    match picker::select(
+        &servers,
+        &lines,
+        "Connect to server",
+        query,
+        &config.naming,
+        true,
+    )? {
+        Selection::Direct(server) => open(server, PickOutcome::Inline, config, &bastion),
+        Selection::Picked(server, outcome) => open(server, outcome, config, &bastion),
+        Selection::Cancelled => Ok(()),
+        Selection::NoMatch => Err(no_server_error(
+            &inventory,
+            cli,
+            config,
+            query.unwrap_or_default(),
+        )),
+    }
+}
+
+fn no_server_error(
+    inventory: &crate::inventory::Inventory,
+    cli: &Cli,
+    config: &Config,
+    query: &str,
+) -> anyhow::Error {
+    let unreachable_match = inventory
+        .filtered(cli.env, &config.tags)
+        .into_iter()
+        .find(|resource| !resource.kind.is_server() && resource.matches(query, &config.naming));
+    match unreachable_match {
+        Some(resource) => {
+            let name = resource.display_name(&config.naming);
+            let hint = match resource.kind {
+                crate::inventory::ResourceKind::Rdb => format!("scwx db {name}"),
+                _ => format!("scwx pf {name}"),
+            };
+            anyhow::anyhow!(
+                "{name} is a {} and has no ssh; try `{hint}`",
+                resource.kind.label()
+            )
+        }
+        None => anyhow::anyhow!("no server matches '{query}'"),
+    }
 }
 
 fn open(

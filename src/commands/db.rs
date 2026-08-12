@@ -13,7 +13,7 @@ use anyhow::{Context, Result, bail, ensure};
 use crate::cli::Cli;
 use crate::config::{Config, Credentials};
 use crate::inventory::{Bastion, Environment, Resource, ResourceKind};
-use crate::picker::{self, PickOutcome};
+use crate::picker::{self, PickOutcome, Selection};
 use crate::{cache, paths, scw, secrets, ssh, tmux};
 
 #[derive(Debug, Clone, Copy)]
@@ -28,33 +28,28 @@ pub fn run(cli: &Cli, config: &Config, name: Option<&str>, mysql: MysqlOptions<'
     let bastion = inventory.bastion()?.clone();
 
     let databases: Vec<&Resource> = inventory
-        .resources
-        .iter()
+        .filtered(Some(env), &config.tags)
+        .into_iter()
         .filter(|resource| is_database(resource, config))
-        .filter(|resource| resource.env(&config.tags) == Some(env))
         .collect();
     ensure!(!databases.is_empty(), "no databases tagged for env {env}");
 
-    if let Some(name) = name {
-        let exact: Vec<&Resource> = databases
-            .iter()
-            .copied()
-            .filter(|resource| resource.name == name || db_key(resource, config, env) == name)
-            .collect();
-        if let [target] = exact.as_slice() {
-            return connect(target, env, config, &bastion, mysql);
-        }
-    }
-
     let lines = render(&databases, config, env);
-    let Some(pick) = picker::pick(&lines, &format!("Connect to database ({env})"), name)? else {
-        return Ok(());
+    let (target, outcome) = match picker::select(
+        &databases,
+        &lines,
+        &format!("Connect to database ({env})"),
+        name,
+        &config.naming,
+        true,
+    )? {
+        Selection::Direct(target) => (target, PickOutcome::Inline),
+        Selection::Picked(target, outcome) => (target, outcome),
+        Selection::NoMatch => bail!("no {env} database matches '{}'", name.unwrap_or_default()),
+        Selection::Cancelled => return Ok(()),
     };
-    let target = *databases
-        .get(pick.index)
-        .context("fzf returned an out-of-range selection")?;
 
-    if pick.outcome != PickOutcome::Inline && tmux::inside_tmux() {
+    if outcome != PickOutcome::Inline && tmux::inside_tmux() {
         let argv: Vec<OsString> = [env::current_exe()
             .context("resolving scwx path")?
             .into_os_string()]
@@ -74,7 +69,7 @@ pub fn run(cli: &Cli, config: &Config, name: Option<&str>, mysql: MysqlOptions<'
         .chain(std::iter::once(OsString::from("--")))
         .chain(mysql.extra_args.iter().map(OsString::from))
         .collect();
-        let placement = match pick.outcome {
+        let placement = match outcome {
             PickOutcome::Window => tmux::Placement::Window,
             PickOutcome::Split => tmux::Placement::Split,
             PickOutcome::VSplit => tmux::Placement::VSplit,
