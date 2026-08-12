@@ -12,6 +12,30 @@ use crate::sensitive::Sensitive;
 
 const API_BASE: &str = "https://api.scaleway.com";
 const PAGE_SIZE: usize = 100;
+const MAX_PAGES: usize = 100;
+
+#[derive(Debug)]
+pub enum FetchError {
+    Api(ureq::Error),
+    TooManyPages,
+}
+
+impl From<ureq::Error> for FetchError {
+    fn from(error: ureq::Error) -> Self {
+        Self::Api(error)
+    }
+}
+
+impl std::fmt::Display for FetchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Api(error) => error.fmt(f),
+            Self::TooManyPages => write!(f, "gave up after {MAX_PAGES} pages"),
+        }
+    }
+}
+
+impl std::error::Error for FetchError {}
 
 pub struct Client {
     agent: Agent,
@@ -51,37 +75,60 @@ impl Client {
         path: &str,
         size_param: &str,
         query: &[(&str, String)],
-    ) -> Result<Vec<L::Item>, ureq::Error> {
-        let mut items = Vec::new();
-        for page in 1.. {
+    ) -> Result<Vec<L::Item>, FetchError> {
+        collect_pages(|page| {
             let mut page_query = vec![
                 (size_param, PAGE_SIZE.to_string()),
                 ("page", page.to_string()),
             ];
             page_query.extend(query.iter().map(|(k, v)| (*k, v.clone())));
             let list: L = self.get_json(path, &page_query)?;
-            let page_items = list.items();
-            let page_len = page_items.len();
-            items.extend(page_items);
-            if page_len < PAGE_SIZE {
-                break;
+            Ok(list.into_parts())
+        })
+    }
+}
+
+/// Pages until the server-reported total is reached, an empty page arrives,
+/// or (without a total) a short page. Capped: an endpoint that ignores the
+/// page parameter must not hang or grow unboundedly.
+fn collect_pages<T>(
+    mut fetch_page: impl FnMut(usize) -> Result<(Vec<T>, Option<u64>), FetchError>,
+) -> Result<Vec<T>, FetchError> {
+    let mut items = Vec::new();
+    for page in 1..=MAX_PAGES {
+        let (page_items, total_count) = fetch_page(page)?;
+        if page_items.is_empty() {
+            return Ok(items);
+        }
+        let short_page = page_items.len() < PAGE_SIZE;
+        items.extend(page_items);
+        match total_count {
+            Some(total) => {
+                if items.len() as u64 >= total {
+                    return Ok(items);
+                }
+            }
+            None => {
+                if short_page {
+                    return Ok(items);
+                }
             }
         }
-        Ok(items)
     }
+    Err(FetchError::TooManyPages)
 }
 
 trait PageList: DeserializeOwned {
     type Item;
-    fn items(self) -> Vec<Self::Item>;
+    fn into_parts(self) -> (Vec<Self::Item>, Option<u64>);
 }
 
 macro_rules! page_list {
     ($list:ty, $field:ident, $item:ty) => {
         impl PageList for $list {
             type Item = $item;
-            fn items(self) -> Vec<$item> {
-                self.$field
+            fn into_parts(self) -> (Vec<$item>, Option<u64>) {
+                (self.$field, self.total_count)
             }
         }
     };
@@ -89,6 +136,8 @@ macro_rules! page_list {
 
 #[derive(Debug, Deserialize)]
 struct InstanceList {
+    #[serde(default)]
+    total_count: Option<u64>,
     servers: Vec<Instance>,
 }
 page_list!(InstanceList, servers, Instance);
@@ -118,6 +167,8 @@ impl Instance {
 
 #[derive(Debug, Deserialize)]
 struct BaremetalList {
+    #[serde(default)]
+    total_count: Option<u64>,
     servers: Vec<Baremetal>,
 }
 page_list!(BaremetalList, servers, Baremetal);
@@ -147,6 +198,8 @@ impl Baremetal {
 
 #[derive(Debug, Deserialize)]
 struct RdbList {
+    #[serde(default)]
+    total_count: Option<u64>,
     instances: Vec<RdbInstance>,
 }
 page_list!(RdbList, instances, RdbInstance);
@@ -191,6 +244,8 @@ impl RdbInstance {
 
 #[derive(Debug, Deserialize)]
 struct RedisList {
+    #[serde(default)]
+    total_count: Option<u64>,
     clusters: Vec<RedisCluster>,
 }
 page_list!(RedisList, clusters, RedisCluster);
@@ -233,6 +288,8 @@ impl RedisCluster {
 
 #[derive(Debug, Deserialize)]
 struct LbList {
+    #[serde(default)]
+    total_count: Option<u64>,
     lbs: Vec<Lb>,
 }
 page_list!(LbList, lbs, Lb);
@@ -273,6 +330,8 @@ impl Lb {
 
 #[derive(Debug, Deserialize)]
 struct GatewayList {
+    #[serde(default)]
+    total_count: Option<u64>,
     gateways: Vec<Gateway>,
 }
 page_list!(GatewayList, gateways, Gateway);
@@ -291,6 +350,8 @@ struct GatewayIp {
 
 #[derive(Debug, Deserialize)]
 struct IpamList {
+    #[serde(default)]
+    total_count: Option<u64>,
     ips: Vec<IpamIp>,
 }
 page_list!(IpamList, ips, IpamIp);
@@ -325,7 +386,7 @@ fn baremetal_private_ips(ips: Vec<IpamIp>) -> Vec<(String, String)> {
 }
 
 impl Client {
-    fn list_instances(&self, zone: &str) -> Result<Vec<Resource>, ureq::Error> {
+    fn list_instances(&self, zone: &str) -> Result<Vec<Resource>, FetchError> {
         let servers = self.get_paged::<InstanceList>(
             &format!("/instance/v1/zones/{zone}/servers"),
             "per_page",
@@ -337,7 +398,7 @@ impl Client {
             .collect())
     }
 
-    fn list_baremetal(&self, zone: &str) -> Result<Vec<Resource>, ureq::Error> {
+    fn list_baremetal(&self, zone: &str) -> Result<Vec<Resource>, FetchError> {
         let servers = self.get_paged::<BaremetalList>(
             &format!("/baremetal/v1/zones/{zone}/servers"),
             "page_size",
@@ -349,7 +410,7 @@ impl Client {
             .collect())
     }
 
-    fn list_redis(&self, zone: &str) -> Result<Vec<Resource>, ureq::Error> {
+    fn list_redis(&self, zone: &str) -> Result<Vec<Resource>, FetchError> {
         let clusters = self.get_paged::<RedisList>(
             &format!("/redis/v1/zones/{zone}/clusters"),
             "page_size",
@@ -361,7 +422,7 @@ impl Client {
             .collect())
     }
 
-    fn list_lbs(&self, zone: &str) -> Result<Vec<Resource>, ureq::Error> {
+    fn list_lbs(&self, zone: &str) -> Result<Vec<Resource>, FetchError> {
         let lbs =
             self.get_paged::<LbList>(&format!("/lb/v1/zones/{zone}/lbs"), "page_size", &[])?;
         Ok(lbs
@@ -370,7 +431,7 @@ impl Client {
             .collect())
     }
 
-    fn list_rdb(&self, region: &str) -> Result<Vec<Resource>, ureq::Error> {
+    fn list_rdb(&self, region: &str) -> Result<Vec<Resource>, FetchError> {
         let instances = self.get_paged::<RdbList>(
             &format!("/rdb/v1/regions/{region}/instances"),
             "page_size",
@@ -382,7 +443,7 @@ impl Client {
             .collect())
     }
 
-    fn find_bastion(&self, zone: &str) -> Result<Option<Bastion>, ureq::Error> {
+    fn find_bastion(&self, zone: &str) -> Result<Option<Bastion>, FetchError> {
         let gateways = self.get_paged::<GatewayList>(
             &format!("/vpc-gw/v2/zones/{zone}/gateways"),
             "page_size",
@@ -404,7 +465,7 @@ impl Client {
     fn list_baremetal_private_ips(
         &self,
         region: &str,
-    ) -> Result<Vec<(String, String)>, ureq::Error> {
+    ) -> Result<Vec<(String, String)>, FetchError> {
         let ips = self.get_paged::<IpamList>(
             &format!("/ipam/v1/regions/{region}/ips"),
             "page_size",
@@ -414,12 +475,12 @@ impl Client {
     }
 }
 
-fn is_auth_error(error: &ureq::Error) -> bool {
-    matches!(error, ureq::Error::StatusCode(401 | 403))
+fn is_auth_error(error: &FetchError) -> bool {
+    matches!(error, FetchError::Api(ureq::Error::StatusCode(401 | 403)))
 }
 
 fn collect_resources(
-    tasks: Vec<(String, Result<Vec<Resource>, ureq::Error>)>,
+    tasks: Vec<(String, Result<Vec<Resource>, FetchError>)>,
 ) -> Result<(Vec<Resource>, bool)> {
     let mut resources = Vec::new();
     let mut complete = true;
@@ -430,7 +491,7 @@ fn collect_resources(
                 return Err(error).with_context(|| format!("scaleway denied access ({label})"));
             }
             // 501: the product does not exist in this zone.
-            Err(ureq::Error::StatusCode(501)) => {}
+            Err(FetchError::Api(ureq::Error::StatusCode(501))) => {}
             Err(error) => {
                 eprintln!("warning: skipping {label}: {error}");
                 complete = false;
@@ -510,7 +571,7 @@ pub fn fetch_inventory(credentials: &Credentials, config: &Config) -> Result<Fet
                         bastion = found;
                     }
                 }
-                Err(ureq::Error::StatusCode(501)) => {}
+                Err(FetchError::Api(ureq::Error::StatusCode(501))) => {}
                 Err(error) if is_auth_error(&error) => {
                     return Err(error)
                         .with_context(|| format!("scaleway denied access (gateways in {zone})"));
@@ -526,7 +587,7 @@ pub fn fetch_inventory(credentials: &Credentials, config: &Config) -> Result<Fet
         for (region, handle) in ipam_tasks {
             match handle.join().expect("api task panicked") {
                 Ok(mut ips) => private_ips.append(&mut ips),
-                Err(ureq::Error::StatusCode(501)) => {}
+                Err(FetchError::Api(ureq::Error::StatusCode(501))) => {}
                 Err(error) if is_auth_error(&error) => {
                     return Err(error)
                         .with_context(|| format!("scaleway denied access (ipam in {region})"));
@@ -573,7 +634,8 @@ mod tests {
         .unwrap();
 
         let resources: Vec<_> = list
-            .items()
+            .into_parts()
+            .0
             .into_iter()
             .filter_map(|s| s.into_resource("fr-par-1"))
             .collect();
@@ -598,7 +660,8 @@ mod tests {
         .unwrap();
 
         let resources: Vec<_> = list
-            .items()
+            .into_parts()
+            .0
             .into_iter()
             .filter_map(|i| i.into_resource("fr-par"))
             .collect();
@@ -623,7 +686,8 @@ mod tests {
         .unwrap();
 
         let resources: Vec<_> = list
-            .items()
+            .into_parts()
+            .0
             .into_iter()
             .filter_map(|c| c.into_resource("fr-par-1"))
             .collect();
@@ -643,7 +707,8 @@ mod tests {
         .unwrap();
 
         let resources: Vec<_> = list
-            .items()
+            .into_parts()
+            .0
             .into_iter()
             .filter_map(|lb| lb.into_resource("fr-par-1"))
             .collect();
@@ -666,7 +731,7 @@ mod tests {
         )
         .unwrap();
 
-        let ips = baremetal_private_ips(list.items());
+        let ips = baremetal_private_ips(list.into_parts().0);
         assert_eq!(ips, [("db-master-1".to_owned(), "172.16.8.11".to_owned())]);
     }
 
@@ -688,7 +753,7 @@ mod tests {
             ("instances in fr-par-1".to_owned(), Ok(vec![resource("a")])),
             (
                 "redis in fr-par-3".to_owned(),
-                Err(ureq::Error::StatusCode(501)),
+                Err(FetchError::Api(ureq::Error::StatusCode(501))),
             ),
         ])
         .unwrap();
@@ -703,7 +768,7 @@ mod tests {
             ("instances in fr-par-1".to_owned(), Ok(vec![resource("a")])),
             (
                 "baremetal in fr-par-2".to_owned(),
-                Err(ureq::Error::StatusCode(503)),
+                Err(FetchError::Api(ureq::Error::StatusCode(503))),
             ),
         ])
         .unwrap();
@@ -716,9 +781,46 @@ mod tests {
     fn collect_propagates_auth_errors() {
         let result = collect_resources(vec![(
             "instances in fr-par-1".to_owned(),
-            Err(ureq::Error::StatusCode(401)),
+            Err(FetchError::Api(ureq::Error::StatusCode(401))),
         )]);
         assert!(result.is_err());
+    }
+
+    fn pages<T: Clone>(
+        pages: Vec<(Vec<T>, Option<u64>)>,
+    ) -> impl FnMut(usize) -> Result<(Vec<T>, Option<u64>), FetchError> {
+        move |page| Ok(pages[page - 1].clone())
+    }
+
+    #[test]
+    fn pagination_stops_on_the_reported_total() {
+        let full: Vec<u32> = (0..100).collect();
+        let items = collect_pages(pages(vec![
+            (full.clone(), Some(150)),
+            ((0..50).collect(), Some(150)),
+        ]))
+        .unwrap();
+        assert_eq!(items.len(), 150);
+    }
+
+    #[test]
+    fn pagination_without_total_stops_on_a_short_page() {
+        let items = collect_pages(pages(vec![((0..30).collect::<Vec<u32>>(), None)])).unwrap();
+        assert_eq!(items.len(), 30);
+    }
+
+    #[test]
+    fn pagination_stops_on_an_empty_page() {
+        let full: Vec<u32> = (0..100).collect();
+        let items = collect_pages(pages(vec![(full, None), (vec![], None)])).unwrap();
+        assert_eq!(items.len(), 100);
+    }
+
+    #[test]
+    fn pagination_gives_up_when_the_server_ignores_the_page_parameter() {
+        let full: Vec<u32> = (0..100).collect();
+        let result = collect_pages(move |_| Ok((full.clone(), None)));
+        assert!(matches!(result, Err(FetchError::TooManyPages)));
     }
 
     #[test]
@@ -733,7 +835,8 @@ mod tests {
         .unwrap();
 
         let bastion = list
-            .items()
+            .into_parts()
+            .0
             .into_iter()
             .filter(|g| g.bastion_enabled)
             .find_map(|g| g.ipv4.map(|ip| (ip.address, g.bastion_port)));
