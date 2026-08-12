@@ -4,7 +4,7 @@ use std::str::FromStr;
 use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 
-use crate::config::{NamingSection, TagsSection};
+use crate::config::{NamingRules, TagConventions};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -115,7 +115,7 @@ fn contains_ignore_ascii_case(haystack: &str, needle: &str) -> bool {
 }
 
 impl Resource {
-    pub fn display_name<'a>(&'a self, naming: &NamingSection) -> &'a str {
+    pub fn display_name<'a>(&'a self, naming: &NamingRules) -> &'a str {
         naming
             .strip_prefixes
             .iter()
@@ -123,18 +123,18 @@ impl Resource {
             .unwrap_or(&self.name)
     }
 
-    pub fn env(&self, tags: &TagsSection) -> Option<Environment> {
+    pub fn env(&self, tags: &TagConventions) -> Option<Environment> {
         self.tags
             .iter()
             .find_map(|tag| tag.strip_prefix(&tags.env_prefix))
             .and_then(|value| value.parse().ok())
     }
 
-    pub fn port_forward_enabled(&self, tags: &TagsSection) -> bool {
+    pub fn port_forward_enabled(&self, tags: &TagConventions) -> bool {
         self.tags.contains(&tags.port_forward_enabled)
     }
 
-    pub fn port_forward_port(&self, tags: &TagsSection) -> Option<u16> {
+    pub fn port_forward_port(&self, tags: &TagConventions) -> Option<u16> {
         self.tags
             .iter()
             .find_map(|tag| tag.strip_prefix(&tags.port_forward_prefix))
@@ -142,15 +142,15 @@ impl Resource {
             .or(self.endpoint_port)
     }
 
-    pub fn is_mysql(&self, tags: &TagsSection) -> bool {
+    pub fn is_mysql(&self, tags: &TagConventions) -> bool {
         self.tags.contains(&tags.mysql)
     }
 
-    pub fn is_master(&self, tags: &TagsSection) -> bool {
+    pub fn is_master(&self, tags: &TagConventions) -> bool {
         self.tags.contains(&tags.master)
     }
 
-    pub fn matches(&self, query: &str, naming: &NamingSection) -> bool {
+    pub fn matches(&self, query: &str, naming: &NamingRules) -> bool {
         contains_ignore_ascii_case(&self.name, query)
             || contains_ignore_ascii_case(self.display_name(naming), query)
     }
@@ -183,7 +183,7 @@ impl Inventory {
     pub fn filtered<'a>(
         &'a self,
         env: Option<Environment>,
-        tags: &'a TagsSection,
+        tags: &'a TagConventions,
     ) -> impl Iterator<Item = &'a Resource> {
         self.resources
             .iter()
@@ -201,8 +201,8 @@ impl Inventory {
 mod tests {
     use super::*;
 
-    fn naming(prefixes: &[&str]) -> NamingSection {
-        NamingSection {
+    fn naming(prefixes: &[&str]) -> NamingRules {
+        NamingRules {
             strip_prefixes: prefixes.iter().map(|p| (*p).to_owned()).collect(),
         }
     }
@@ -234,7 +234,7 @@ mod tests {
 
     #[test]
     fn env_parses_the_env_tag_case_insensitively() {
-        let tags = TagsSection::default();
+        let tags = TagConventions::default();
         assert_eq!(
             resource("a", &["Env:Prod"]).env(&tags),
             Some(Environment::Prod)
@@ -249,7 +249,7 @@ mod tests {
 
     #[test]
     fn port_forward_port_prefers_the_tag_over_the_endpoint() {
-        let tags = TagsSection::default();
+        let tags = TagConventions::default();
         let mut r = resource("a", &["PortForward:3306"]);
         r.endpoint_port = Some(6379);
         assert_eq!(r.port_forward_port(&tags), Some(3306));
@@ -263,7 +263,7 @@ mod tests {
 
     #[test]
     fn invalid_port_forward_tag_falls_back_to_the_endpoint() {
-        let tags = TagsSection::default();
+        let tags = TagConventions::default();
         let mut r = resource("a", &["PortForward:not-a-port"]);
         r.endpoint_port = Some(5432);
         assert_eq!(r.port_forward_port(&tags), Some(5432));
@@ -280,7 +280,7 @@ mod tests {
 
     #[test]
     fn filtered_keeps_only_the_requested_env() {
-        let tags = TagsSection::default();
+        let tags = TagConventions::default();
         let inventory = Inventory::new(
             vec![
                 resource("prod-a", &["Env:Prod"]),

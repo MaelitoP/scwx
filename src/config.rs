@@ -12,22 +12,22 @@ use crate::sensitive::Sensitive;
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
-    pub scaleway: ScalewaySection,
-    pub bastion: BastionSection,
-    pub ssh: SshSection,
-    pub tags: TagsSection,
-    pub db: DbSection,
-    pub naming: NamingSection,
-    pub cache: CacheSection,
+    pub scaleway: ScalewayLocations,
+    pub bastion: BastionDefaults,
+    pub ssh: SshIdentity,
+    pub tags: TagConventions,
+    pub db: DatabaseRules,
+    pub naming: NamingRules,
+    pub cache: CachePolicy,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct CacheSection {
+pub struct CachePolicy {
     pub ttl_seconds: u64,
 }
 
-impl Default for CacheSection {
+impl Default for CachePolicy {
     fn default() -> Self {
         Self { ttl_seconds: 300 }
     }
@@ -35,12 +35,12 @@ impl Default for CacheSection {
 
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct ScalewaySection {
+pub struct ScalewayLocations {
     pub zones: Vec<String>,
     pub regions: Vec<String>,
 }
 
-impl Default for ScalewaySection {
+impl Default for ScalewayLocations {
     fn default() -> Self {
         Self {
             zones: vec![
@@ -55,12 +55,12 @@ impl Default for ScalewaySection {
 
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct BastionSection {
+pub struct BastionDefaults {
     pub user: String,
     pub fallback_port: u16,
 }
 
-impl Default for BastionSection {
+impl Default for BastionDefaults {
     fn default() -> Self {
         Self {
             user: "bastion".to_owned(),
@@ -71,13 +71,13 @@ impl Default for BastionSection {
 
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct SshSection {
+pub struct SshIdentity {
     pub user: String,
     /// Private key passed to ssh with -i; ssh's own defaults apply when unset.
     pub key: Option<String>,
 }
 
-impl Default for SshSection {
+impl Default for SshIdentity {
     fn default() -> Self {
         Self {
             user: "root".to_owned(),
@@ -88,7 +88,7 @@ impl Default for SshSection {
 
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct TagsSection {
+pub struct TagConventions {
     pub port_forward_enabled: String,
     pub port_forward_prefix: String,
     pub env_prefix: String,
@@ -96,7 +96,7 @@ pub struct TagsSection {
     pub master: String,
 }
 
-impl Default for TagsSection {
+impl Default for TagConventions {
     fn default() -> Self {
         Self {
             port_forward_enabled: "EnablePortForward:true".to_owned(),
@@ -110,7 +110,7 @@ impl Default for TagsSection {
 
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct DbSection {
+pub struct DatabaseRules {
     /// Scaleway project holding the database password secrets.
     pub secret_project_id: Option<String>,
     /// Secret name pattern; {db}, {user} and {env} expand uppercased.
@@ -123,7 +123,7 @@ pub struct DbSection {
     pub strip_prefixes: Vec<String>,
 }
 
-impl Default for DbSection {
+impl Default for DatabaseRules {
     fn default() -> Self {
         Self {
             secret_project_id: None,
@@ -137,7 +137,7 @@ impl Default for DbSection {
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct NamingSection {
+pub struct NamingRules {
     /// Prefixes stripped from resource names for display and matching.
     pub strip_prefixes: Vec<String>,
 }

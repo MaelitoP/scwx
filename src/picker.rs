@@ -3,7 +3,7 @@ use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, bail};
 
-use crate::config::{Config, NamingSection};
+use crate::config::{Config, NamingRules};
 use crate::inventory::Resource;
 use crate::table;
 
@@ -72,7 +72,7 @@ pub fn select<'a>(
     lines: &[String],
     header: &str,
     query: Option<&str>,
-    naming: &NamingSection,
+    naming: &NamingRules,
     with_placement_keys: bool,
 ) -> Result<Selection<'a>> {
     if let Some(query) = query {
@@ -230,7 +230,7 @@ mod tests {
 
     #[test]
     fn select_resolves_a_unique_substring_match_directly() {
-        let naming = NamingSection::default();
+        let naming = NamingRules::default();
         let a = resource("platform-perco-1");
         let b = resource("platform-api-1");
         let candidates = vec![&a, &b];
@@ -241,7 +241,7 @@ mod tests {
 
     #[test]
     fn select_prefers_an_exact_name_over_substring_ambiguity() {
-        let naming = NamingSection::default();
+        let naming = NamingRules::default();
         let a = resource("api");
         let b = resource("api-1");
         let candidates = vec![&a, &b];
@@ -252,7 +252,7 @@ mod tests {
 
     #[test]
     fn select_reports_no_match_for_an_unknown_query() {
-        let naming = NamingSection::default();
+        let naming = NamingRules::default();
         let a = resource("api-1");
         let candidates = vec![&a];
 
