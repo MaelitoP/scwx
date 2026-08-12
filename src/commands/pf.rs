@@ -178,7 +178,14 @@ fn pick<'a>(
 ) -> Result<Option<&'a Resource>> {
     let lines = picker::render_resources(resources, config);
     let query = (!query.is_empty()).then_some(query);
-    Ok(picker::pick_plain(&lines, "Forward a port to", query)?.map(|index| resources[index]))
+    picker::pick_plain(&lines, "Forward a port to", query)?
+        .map(|index| {
+            resources
+                .get(index)
+                .copied()
+                .context("fzf returned an out-of-range selection")
+        })
+        .transpose()
 }
 
 fn socket_path(dir: &Path, name: &str) -> PathBuf {

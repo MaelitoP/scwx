@@ -50,7 +50,9 @@ pub fn run(cli: &Cli, config: &Config, name: Option<&str>, mysql: MysqlOptions<'
     let Some(pick) = picker::pick(&lines, &format!("Connect to database ({env})"), name)? else {
         return Ok(());
     };
-    let target = databases[pick.index];
+    let target = *databases
+        .get(pick.index)
+        .context("fzf returned an out-of-range selection")?;
 
     if pick.outcome != PickOutcome::Inline && tmux::inside_tmux() {
         let argv: Vec<OsString> = [env::current_exe()

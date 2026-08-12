@@ -1,4 +1,4 @@
-use anyhow::{Result, bail, ensure};
+use anyhow::{Context, Result, bail, ensure};
 
 use crate::cli::Cli;
 use crate::config::Config;
@@ -57,7 +57,10 @@ pub fn run(cli: &Cli, config: &Config, query: Option<&str>) -> Result<()> {
     let Some(pick) = picker::pick(&lines, "Connect to server", query)? else {
         return Ok(());
     };
-    open(servers[pick.index], pick.outcome, config, &bastion)
+    let server = servers
+        .get(pick.index)
+        .context("fzf returned an out-of-range selection")?;
+    open(server, pick.outcome, config, &bastion)
 }
 
 fn open(
