@@ -4,6 +4,7 @@ use serde::Deserialize;
 
 use crate::inventory::Environment;
 use crate::scw::Client;
+use crate::sensitive::Sensitive;
 
 pub fn secret_name(template: &str, db: &str, user: &str, env: Environment) -> String {
     template
@@ -32,7 +33,7 @@ pub fn access_secret(
     region: &str,
     project_id: &str,
     name: &str,
-) -> Result<String> {
+) -> Result<Sensitive> {
     let list: SecretList = client
         .get_json(
             &format!("/secret-manager/v1beta1/regions/{region}/secrets"),
@@ -58,7 +59,9 @@ pub fn access_secret(
         .decode(&version.data)
         .with_context(|| format!("decoding secret {name}"))?;
     let value = String::from_utf8(bytes).with_context(|| format!("secret {name} is not utf-8"))?;
-    Ok(value.trim_end_matches(['\n', '\r']).to_owned())
+    Ok(Sensitive::new(
+        value.trim_end_matches(['\n', '\r']).to_owned(),
+    ))
 }
 
 #[cfg(test)]

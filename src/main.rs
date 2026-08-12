@@ -9,6 +9,7 @@ mod paths;
 mod picker;
 mod scw;
 mod secrets;
+mod sensitive;
 mod ssh;
 mod tmux;
 

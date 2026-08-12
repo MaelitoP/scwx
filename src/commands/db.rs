@@ -1,6 +1,9 @@
 use std::env;
 use std::ffi::OsString;
+use std::fs;
 use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::os::unix::fs::OpenOptionsExt;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -235,11 +238,13 @@ fn connect(
 
     let result = wait_for_port(&mut tunnel_child, local_port).and_then(|()| {
         eprintln!("connected to {key} ({env}) via 127.0.0.1:{local_port}");
-        Command::new("mysql")
-            .args(mysql_argv(local_port, &user, &key, mysql))
-            .env("MYSQL_PWD", &password)
+        let defaults_file = write_mysql_defaults(password.expose())?;
+        let status = Command::new("mysql")
+            .args(mysql_argv(&defaults_file, local_port, &user, &key, mysql))
             .status()
-            .context("running mysql (is it installed?)")
+            .context("running mysql (is it installed?)");
+        let _ = fs::remove_file(&defaults_file);
+        status
     });
 
     let _ = tunnel_child.kill();
@@ -250,8 +255,37 @@ fn connect(
     Ok(())
 }
 
-fn mysql_argv(local_port: u16, user: &str, schema: &str, mysql: MysqlOptions<'_>) -> Vec<String> {
+/// The password travels in a 0600 option file: MYSQL_PWD is readable in
+/// /proc and inherited by pagers and shell escapes.
+fn write_mysql_defaults(password: &str) -> Result<PathBuf> {
+    let path = env::temp_dir().join(format!("scwx-mysql-{}.cnf", std::process::id()));
+    let _ = fs::remove_file(&path);
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true).mode(0o600);
+    let mut file = options
+        .open(&path)
+        .with_context(|| format!("creating {}", path.display()))?;
+    use std::io::Write as _;
+    file.write_all(mysql_defaults_content(password).as_bytes())
+        .with_context(|| format!("writing {}", path.display()))?;
+    Ok(path)
+}
+
+fn mysql_defaults_content(password: &str) -> String {
+    let escaped = password.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("[client]\npassword=\"{escaped}\"\n")
+}
+
+fn mysql_argv(
+    defaults_file: &Path,
+    local_port: u16,
+    user: &str,
+    schema: &str,
+    mysql: MysqlOptions<'_>,
+) -> Vec<String> {
     let mut argv = vec![
+        // mysql requires any defaults option to come first.
+        format!("--defaults-extra-file={}", defaults_file.display()),
         "-h".to_owned(),
         "127.0.0.1".to_owned(),
         "-P".to_owned(),
@@ -363,10 +397,17 @@ mod tests {
             execute: Some("SELECT 1"),
             extra_args: &["--table".to_owned()],
         };
-        let argv = mysql_argv(13306, "mael_lepetit", "search", options);
+        let argv = mysql_argv(
+            Path::new("/tmp/d.cnf"),
+            13306,
+            "mael_lepetit",
+            "search",
+            options,
+        );
         assert_eq!(
             argv,
             [
+                "--defaults-extra-file=/tmp/d.cnf",
                 "-h",
                 "127.0.0.1",
                 "-P",
@@ -381,6 +422,7 @@ mod tests {
         );
 
         let plain = mysql_argv(
+            Path::new("/tmp/d.cnf"),
             13306,
             "u",
             "s",
@@ -391,6 +433,14 @@ mod tests {
         );
         assert_eq!(plain.last().unwrap(), "s");
         assert!(!plain.contains(&"--execute".to_owned()));
+    }
+
+    #[test]
+    fn mysql_defaults_escape_quotes_and_backslashes() {
+        assert_eq!(
+            mysql_defaults_content(r#"pa"ss\word"#),
+            "[client]\npassword=\"pa\\\"ss\\\\word\"\n"
+        );
     }
 
     #[test]

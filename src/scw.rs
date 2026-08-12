@@ -8,13 +8,14 @@ use ureq::Agent;
 
 use crate::config::{Config, Credentials};
 use crate::inventory::{Bastion, Inventory, Resource, ResourceKind};
+use crate::sensitive::Sensitive;
 
 const API_BASE: &str = "https://api.scaleway.com";
 const PAGE_SIZE: usize = 100;
 
 pub struct Client {
     agent: Agent,
-    secret_key: String,
+    secret_key: Sensitive,
 }
 
 impl Client {
@@ -38,7 +39,7 @@ impl Client {
         let mut request = self
             .agent
             .get(format!("{API_BASE}{path}"))
-            .header("X-Auth-Token", &self.secret_key);
+            .header("X-Auth-Token", self.secret_key.expose());
         for (key, value) in query {
             request = request.query(*key, value);
         }

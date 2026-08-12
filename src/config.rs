@@ -6,6 +6,8 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
+use crate::sensitive::Sensitive;
+
 #[derive(Debug, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
@@ -152,7 +154,7 @@ impl Config {
 
 #[derive(Debug, Clone)]
 pub struct Credentials {
-    pub secret_key: String,
+    pub secret_key: Sensitive,
     pub default_project_id: Option<String>,
 }
 
@@ -207,7 +209,7 @@ impl Credentials {
         };
 
         Ok(Self {
-            secret_key,
+            secret_key: Sensitive::new(secret_key),
             default_project_id,
         })
     }
@@ -282,7 +284,7 @@ profiles:
         );
         let credentials = Credentials::resolve(file, |_| None).unwrap();
 
-        assert_eq!(credentials.secret_key, "work-key");
+        assert_eq!(credentials.secret_key.expose(), "work-key");
         assert_eq!(
             credentials.default_project_id.as_deref(),
             Some("base-project")
@@ -297,7 +299,7 @@ profiles:
         })
         .unwrap();
 
-        assert_eq!(credentials.secret_key, "env-key");
+        assert_eq!(credentials.secret_key.expose(), "env-key");
     }
 
     #[test]
@@ -315,7 +317,7 @@ profiles:
         })
         .unwrap();
 
-        assert_eq!(credentials.secret_key, "staging-key");
+        assert_eq!(credentials.secret_key.expose(), "staging-key");
     }
 
     #[test]
