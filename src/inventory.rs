@@ -17,7 +17,7 @@ pub enum ResourceKind {
 }
 
 impl ResourceKind {
-    pub fn label(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Instance => "instance",
             Self::Baremetal => "baremetal",
@@ -44,6 +44,12 @@ pub enum Environment {
     Dev,
 }
 
+impl fmt::Display for ResourceKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 impl Environment {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -62,7 +68,7 @@ impl FromStr for Environment {
             "prod" => Ok(Self::Prod),
             "beta" => Ok(Self::Beta),
             "dev" => Ok(Self::Dev),
-            _ => Err(UnknownEnvironment),
+            other => Err(UnknownEnvironment(other.to_owned())),
         }
     }
 }
@@ -74,11 +80,11 @@ impl fmt::Display for Environment {
 }
 
 #[derive(Debug)]
-pub struct UnknownEnvironment;
+pub struct UnknownEnvironment(String);
 
 impl fmt::Display for UnknownEnvironment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("unknown environment")
+        write!(f, "unknown environment '{}'", self.0)
     }
 }
 

@@ -4,9 +4,9 @@ use std::path::Path;
 use anyhow::Result;
 
 use crate::config::Config;
-use crate::exec::shell_join;
 use crate::inventory::Bastion;
 use crate::paths;
+use crate::shell::shell_join;
 
 /// Host keys churn as servers are rebuilt and resolve behind the bastion,
 /// so pinning them only produces noise and spurious failures.

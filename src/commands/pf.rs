@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cli::{PfCommand, Scope};
 use crate::config::Config;
+use crate::exec;
 use crate::inventory::Resource;
 use crate::picker::{self, Selection};
 use crate::{cache, output, paths, ssh};
@@ -103,7 +104,7 @@ fn start(
             }
             MasterState::Dead => {
                 eprintln!("pruning stale socket for {name}");
-                remove(&sockets, &name);
+                remove_tunnel_files(&sockets, &name);
             }
             MasterState::Unknown => {
                 bail!("cannot probe the existing socket for {name} (is ssh installed?)")
@@ -139,8 +140,7 @@ fn start(
     let destination = command.destination().to_owned();
     let argv = command.with_control_socket(&socket).into_argv();
 
-    let status = Command::new(&argv[0])
-        .args(&argv[1..])
+    let status = exec::command(&argv)?
         .status()
         .context("starting ssh tunnel")?;
     ensure!(status.success(), "ssh tunnel failed with {status}");
@@ -221,7 +221,7 @@ fn master_state(dir: &Path, record: &TunnelRecord) -> MasterState {
     }
 }
 
-fn remove(dir: &Path, name: &str) {
+fn remove_tunnel_files(dir: &Path, name: &str) {
     let _ = fs::remove_file(record_path(dir, name));
     let _ = fs::remove_file(socket_path(dir, name));
 }
@@ -232,7 +232,7 @@ fn list() -> Result<()> {
     for record in records(&dir) {
         match master_state(&dir, &record) {
             MasterState::Dead => {
-                remove(&dir, &record.name);
+                remove_tunnel_files(&dir, &record.name);
                 continue;
             }
             MasterState::Unknown => {
@@ -282,7 +282,7 @@ fn stop(name: Option<&str>) -> Result<()> {
         // The master may already be gone; confirm before deleting its
         // bookkeeping, or a live tunnel becomes unstoppable.
         if exited || master_state(&dir, record) != MasterState::Alive {
-            remove(&dir, &record.name);
+            remove_tunnel_files(&dir, &record.name);
             output::emit(&format!("stopped {}", record.name))?;
         } else {
             eprintln!(

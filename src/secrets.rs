@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, ensure};
+use anyhow::{Context, Result};
 use base64::Engine;
 use serde::Deserialize;
 
@@ -28,26 +28,25 @@ struct SecretVersion {
     data: String,
 }
 
-pub fn access_secret(
+pub fn read_secret(
     client: &Client,
     region: &str,
     project_id: &str,
     name: &str,
 ) -> Result<Sensitive> {
     let list: SecretList = client
-        .get_json(
+        .fetch_json(
             &format!("/secret-manager/v1beta1/regions/{region}/secrets"),
-            &[
-                ("project_id", project_id.to_owned()),
-                ("name", name.to_owned()),
-            ],
+            &[("project_id", project_id), ("name", name)],
         )
         .with_context(|| format!("listing secrets named {name}"))?;
-    ensure!(!list.secrets.is_empty(), "no secret named {name}");
-
-    let secret_id = &list.secrets[0].id;
+    let secret_id = &list
+        .secrets
+        .first()
+        .with_context(|| format!("no secret named {name}"))?
+        .id;
     let version: SecretVersion = client
-        .get_json(
+        .fetch_json(
             &format!(
                 "/secret-manager/v1beta1/regions/{region}/secrets/{secret_id}/versions/latest/access"
             ),

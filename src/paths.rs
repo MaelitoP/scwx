@@ -10,10 +10,10 @@ pub fn home_dir() -> Result<PathBuf> {
 }
 
 fn xdg_dir(var: &str, fallback: &str) -> Result<PathBuf> {
-    match env::var_os(var).filter(|v| !v.is_empty()) {
-        Some(dir) => Ok(PathBuf::from(dir)),
-        None => Ok(home_dir()?.join(fallback)),
-    }
+    Ok(match env::var_os(var).filter(|v| !v.is_empty()) {
+        Some(dir) => PathBuf::from(dir),
+        None => home_dir()?.join(fallback),
+    })
 }
 
 pub fn config_file() -> Result<PathBuf> {
@@ -33,8 +33,8 @@ pub fn sockets_dir() -> Result<PathBuf> {
 }
 
 pub fn expand_tilde(path: &str) -> Result<PathBuf> {
-    match path.strip_prefix("~/") {
-        Some(rest) => Ok(home_dir()?.join(rest)),
-        None => Ok(PathBuf::from(path)),
-    }
+    Ok(match path.strip_prefix("~/") {
+        Some(rest) => home_dir()?.join(rest),
+        None => PathBuf::from(path),
+    })
 }

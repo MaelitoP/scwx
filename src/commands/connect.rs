@@ -3,6 +3,7 @@ use anyhow::{Result, ensure};
 use crate::cli::Scope;
 use crate::config::Config;
 use crate::inventory::Resource;
+use crate::inventory::{Inventory, ResourceKind};
 use crate::picker::{self, PickOutcome, Selection};
 use crate::{cache, exec, ssh, tmux};
 
@@ -24,8 +25,8 @@ pub fn run(scope: &Scope, config: &Config, query: Option<&str>) -> Result<()> {
         &config.naming,
         true,
     )? {
-        Selection::Direct(server) => open(server, PickOutcome::Inline, config, &bastion),
-        Selection::Picked(server, outcome) => open(server, outcome, config, &bastion),
+        Selection::Direct(server) => open_session(server, PickOutcome::Inline, config, &bastion),
+        Selection::Picked(server, outcome) => open_session(server, outcome, config, &bastion),
         Selection::Cancelled => Ok(()),
         Selection::NoMatch => Err(no_server_error(
             &inventory,
@@ -37,7 +38,7 @@ pub fn run(scope: &Scope, config: &Config, query: Option<&str>) -> Result<()> {
 }
 
 fn no_server_error(
-    inventory: &crate::inventory::Inventory,
+    inventory: &Inventory,
     scope: &Scope,
     config: &Config,
     query: &str,
@@ -49,19 +50,22 @@ fn no_server_error(
         Some(resource) => {
             let name = resource.display_name(&config.naming);
             let hint = match resource.kind {
-                crate::inventory::ResourceKind::Rdb => format!("scwx db {name}"),
-                _ => format!("scwx pf {name}"),
+                ResourceKind::Rdb => format!("scwx db {name}"),
+                ResourceKind::Redis | ResourceKind::Lb => format!("scwx pf {name}"),
+                ResourceKind::Instance | ResourceKind::Baremetal => {
+                    format!("scwx connect {name}")
+                }
             };
             anyhow::anyhow!(
                 "{name} is a {} and has no ssh; try `{hint}`",
-                resource.kind.label()
+                resource.kind.as_str()
             )
         }
         None => anyhow::anyhow!("no server matches '{query}'"),
     }
 }
 
-fn open(
+fn open_session(
     resource: &Resource,
     outcome: PickOutcome,
     config: &Config,

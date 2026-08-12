@@ -11,6 +11,7 @@ mod picker;
 mod scw;
 mod secrets;
 mod sensitive;
+mod shell;
 mod ssh;
 mod table;
 mod tmux;
@@ -23,7 +24,9 @@ use crate::config::Config;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let config = Config::load(&paths::config_file()?)?;
+    // Deliberately not loaded up front: a broken config must not take down
+    // `completions` (sourced by the shell) or `update` (the recovery path).
+    let config = || Config::load(&paths::config_file()?);
     let scope = cli.scope();
     match cli.command {
         Command::Ls {
@@ -41,16 +44,18 @@ fn main() -> Result<()> {
             .into_iter()
             .flatten()
             .next();
-            commands::ls::run(&scope, &config, json, names, cached)
+            commands::ls::run(&scope, &config()?, json, names, cached)
         }
-        Command::Connect { ref query } => commands::connect::run(&scope, &config, query.as_deref()),
+        Command::Connect { ref query } => {
+            commands::connect::run(&scope, &config()?, query.as_deref())
+        }
         Command::Db {
             ref name,
             ref execute,
             ref mysql_args,
         } => commands::db::run(
             &scope,
-            &config,
+            &config()?,
             name.as_deref(),
             commands::db::MysqlOptions {
                 execute: execute.as_deref(),
@@ -64,13 +69,13 @@ fn main() -> Result<()> {
             remote_port,
         } => commands::pf::run(
             &scope,
-            &config,
+            &config()?,
             command.as_ref(),
             query.as_deref(),
             local_port,
             remote_port,
         ),
-        Command::SyncSsh => commands::sync_ssh::run(&scope, &config),
+        Command::SyncSsh => commands::sync_ssh::run(&scope, &config()?),
         Command::Completions { shell } => commands::completions::run(shell),
         Command::Update => commands::update::run(),
     }

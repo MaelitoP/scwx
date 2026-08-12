@@ -13,6 +13,7 @@ use anyhow::{Context, Result, bail, ensure};
 use crate::cli::Scope;
 use crate::config::{Config, Credentials};
 use crate::database::{db_key, is_database};
+use crate::exec;
 use crate::inventory::{Bastion, Environment, Resource, ResourceKind};
 use crate::picker::{self, PickOutcome, Selection};
 use crate::{cache, paths, scw, secrets, ssh, table, tmux};
@@ -140,7 +141,7 @@ fn connect(
         .context("no scaleway region configured")?;
     let secret_name = secrets::secret_name(&config.db.secret_name_template, &key, &user, env);
     let client = scw::Client::new(&credentials);
-    let password = secrets::access_secret(&client, region, &project_id, &secret_name)?;
+    let password = secrets::read_secret(&client, region, &project_id, &secret_name)?;
 
     let local_port = free_local_port(preferred_local_port(remote_port))?;
     let tunnel = ssh::Tunnel {
@@ -150,8 +151,7 @@ fn connect(
     };
     let argv = ssh::bastion_tunnel(&tunnel, config, bastion)?.into_argv();
     // The tunnel must not read stdin: piped queries belong to mysql.
-    let mut tunnel_child = Command::new(&argv[0])
-        .args(&argv[1..])
+    let mut tunnel_child = exec::command(&argv)?
         .stdin(Stdio::null())
         .spawn()
         .context("starting ssh tunnel")?;

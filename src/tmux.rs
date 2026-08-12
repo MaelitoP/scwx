@@ -4,7 +4,7 @@ use std::process::Command;
 
 use anyhow::{Context, Result, ensure};
 
-use crate::exec::shell_join;
+use crate::shell::shell_join;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Placement {
@@ -48,7 +48,8 @@ pub fn open(placement: Placement, title: &str, argv: &[OsString]) -> Result<()> 
     ensure!(status.success(), "tmux exited with {status}");
 
     if placement != Placement::Window {
-        // The new pane is active right after split-window.
+        // The new pane is active right after split-window. Best-effort:
+        // the title is cosmetic and older tmux lacks -T.
         let _ = Command::new("tmux")
             .args(["select-pane", "-T", title])
             .status();

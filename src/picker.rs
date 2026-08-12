@@ -13,7 +13,7 @@ pub fn render_resources(resources: &[&Resource], config: &Config) -> Vec<String>
         .map(|resource| {
             [
                 resource.display_name(&config.naming).to_owned(),
-                resource.kind.label().to_owned(),
+                resource.kind.to_string(),
                 resource
                     .env(&config.tags)
                     .map(|env| env.to_string())
@@ -98,7 +98,7 @@ pub fn select<'a>(
     let pick = if with_placement_keys {
         pick(lines, header, query)?
     } else {
-        pick_plain(lines, header, query)?.map(|index| Pick {
+        pick_without_placement(lines, header, query)?.map(|index| Pick {
             index,
             outcome: PickOutcome::Inline,
         })
@@ -122,7 +122,7 @@ pub fn pick(lines: &[String], header: &str, initial_query: Option<&str>) -> Resu
 }
 
 /// Picker without placement keys; returns the picked line index.
-pub fn pick_plain(
+pub fn pick_without_placement(
     lines: &[String],
     header: &str,
     initial_query: Option<&str>,

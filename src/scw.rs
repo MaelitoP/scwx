@@ -37,6 +37,7 @@ impl std::fmt::Display for FetchError {
 
 impl std::error::Error for FetchError {}
 
+#[derive(Debug)]
 pub struct Client {
     agent: Agent,
     secret_key: Sensitive,
@@ -55,17 +56,17 @@ impl Client {
         }
     }
 
-    pub fn get_json<T: DeserializeOwned>(
+    pub fn fetch_json<T: DeserializeOwned>(
         &self,
         path: &str,
-        query: &[(&str, String)],
+        query: &[(&str, &str)],
     ) -> Result<T, ureq::Error> {
         let mut request = self
             .agent
             .get(format!("{API_BASE}{path}"))
             .header("X-Auth-Token", self.secret_key.expose());
         for (key, value) in query {
-            request = request.query(*key, value);
+            request = request.query(*key, *value);
         }
         request.call()?.body_mut().read_json()
     }
@@ -74,15 +75,14 @@ impl Client {
         &self,
         path: &str,
         size_param: &str,
-        query: &[(&str, String)],
+        query: &[(&str, &str)],
     ) -> Result<Vec<L::Item>, FetchError> {
         collect_pages(|page| {
-            let mut page_query = vec![
-                (size_param, PAGE_SIZE.to_string()),
-                ("page", page.to_string()),
-            ];
-            page_query.extend(query.iter().map(|(k, v)| (*k, v.clone())));
-            let list: L = self.get_json(path, &page_query)?;
+            let page_size = PAGE_SIZE.to_string();
+            let page = page.to_string();
+            let mut page_query = vec![(size_param, page_size.as_str()), ("page", page.as_str())];
+            page_query.extend_from_slice(query);
+            let list: L = self.fetch_json(path, &page_query)?;
             Ok(list.into_parts())
         })
     }

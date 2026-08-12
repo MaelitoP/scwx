@@ -22,7 +22,7 @@ struct ResourceView<'a> {
 impl<'a> ResourceView<'a> {
     fn new(resource: &'a Resource, config: &Config) -> Self {
         Self {
-            kind: resource.kind.label(),
+            kind: resource.kind.as_str(),
             id: &resource.id,
             name: &resource.name,
             display_name: resource.display_name(&config.naming).to_owned(),

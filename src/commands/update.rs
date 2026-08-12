@@ -22,11 +22,11 @@ struct Asset {
     browser_download_url: String,
 }
 
-fn target() -> Result<String> {
-    target_for(env::consts::OS, env::consts::ARCH)
+fn asset_target() -> Result<String> {
+    asset_target_for(env::consts::OS, env::consts::ARCH)
 }
 
-fn target_for(os: &str, arch: &str) -> Result<String> {
+fn asset_target_for(os: &str, arch: &str) -> Result<String> {
     let os = match os {
         "macos" => "apple-darwin",
         "linux" => "unknown-linux-gnu",
@@ -120,7 +120,7 @@ pub fn run() -> Result<()> {
         "latest release {latest} is older than the installed {current}; refusing to downgrade"
     );
 
-    let asset_name = format!("scwx-{}", target()?);
+    let asset_name = format!("scwx-{}", asset_target()?);
     let find_asset = |name: &str| {
         release
             .assets
@@ -161,14 +161,14 @@ mod tests {
     #[test]
     fn targets_map_to_release_asset_names() {
         assert_eq!(
-            target_for("macos", "aarch64").unwrap(),
+            asset_target_for("macos", "aarch64").unwrap(),
             "aarch64-apple-darwin"
         );
         assert_eq!(
-            target_for("linux", "x86_64").unwrap(),
+            asset_target_for("linux", "x86_64").unwrap(),
             "x86_64-unknown-linux-gnu"
         );
-        assert!(target_for("windows", "x86_64").is_err());
+        assert!(asset_target_for("windows", "x86_64").is_err());
     }
 
     #[test]
