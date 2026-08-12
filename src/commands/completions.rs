@@ -26,16 +26,16 @@ pub fn run(shell: Shell) -> Result<()> {
 fn with_dynamic_names(script: &str) -> String {
     let script = script
         .replace(
-            "matches a single server:_default",
-            "matches a single server:_scwx_server_names",
+            &format!("{}:_default", crate::cli::CONNECT_QUERY_HELP),
+            &format!("{}:_scwx_server_names", crate::cli::CONNECT_QUERY_HELP),
         )
         .replace(
-            "picks interactively when omitted or ambiguous:_default",
-            "picks interactively when omitted or ambiguous:_scwx_db_names",
+            &format!("{}:_default", crate::cli::DB_NAME_HELP),
+            &format!("{}:_scwx_db_names", crate::cli::DB_NAME_HELP),
         )
         .replace(
-            "matches a single resource:_default",
-            "matches a single resource:_scwx_pf_names",
+            &format!("{}:_default", crate::cli::PF_QUERY_HELP),
+            &format!("{}:_scwx_pf_names", crate::cli::PF_QUERY_HELP),
         )
         .replace("'::name:_default'", "'::name:_scwx_tunnel_names'");
 
@@ -46,7 +46,10 @@ fn with_dynamic_names(script: &str) -> String {
     // state machine off line[1].
     let script = script
         .replace(
-            "'::query -- Fuzzy query; forwards directly when it matches a single resource:_scwx_pf_names' \\\n\":: :_scwx__subcmd__pf_commands\" \\\n",
+            &format!(
+                "'::query -- {}:_scwx_pf_names' \\\n\":: :_scwx__subcmd__pf_commands\" \\\n",
+                crate::cli::PF_QUERY_HELP
+            ),
             "\":: :_scwx_pf_targets_or_commands\" \\\n",
         )
         .replace(
@@ -100,9 +103,9 @@ mod tests {
         // pf: the query positional is merged into the subcommand position
         // and the state machine reads line[1], so `pf stop <TAB>` descends.
         assert!(script.contains(":: :_scwx_pf_targets_or_commands"));
-        assert!(!script.contains("::query -- Fuzzy query; forwards directly"));
+        assert!(!script.contains(&format!("::query -- {}", crate::cli::PF_QUERY_HELP)));
         assert!(script.contains("scwx-pf-command-$line[1]"));
-        assert!(!script.contains("$line[2]"));
+        assert!(!script.contains("scwx-pf-command-$line[2]"));
         assert!(script.contains("_scwx_pf_targets_or_commands() {"));
 
         let helpers = script.find("_scwx_server_names() {").unwrap();

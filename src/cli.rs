@@ -3,6 +3,13 @@ use clap::{Parser, Subcommand};
 use crate::cache::Freshness;
 use crate::inventory::Environment;
 
+// Shared with the zsh completion rewriter, which anchors its dynamic-name
+// surgery on these exact strings.
+pub const CONNECT_QUERY_HELP: &str =
+    "Fuzzy query; connects directly when it matches a single server";
+pub const DB_NAME_HELP: &str = "Database name; picks interactively when omitted or ambiguous";
+pub const PF_QUERY_HELP: &str = "Fuzzy query; forwards directly when it matches a single resource";
+
 #[derive(Debug, Parser)]
 #[command(
     name = "scwx",
@@ -64,12 +71,12 @@ pub enum Command {
     },
     /// Pick a server and open an SSH session through the bastion
     Connect {
-        /// Fuzzy query; connects directly when it matches a single server
+        #[arg(help = CONNECT_QUERY_HELP)]
         query: Option<String>,
     },
     /// Pick a database and open a mysql session through a tunnel
     Db {
-        /// Database name; picks interactively when omitted or ambiguous
+        #[arg(help = DB_NAME_HELP)]
         name: Option<String>,
         /// Run a single query and exit (mysql --execute)
         #[arg(short = 'e', long)]
@@ -82,7 +89,7 @@ pub enum Command {
     Pf {
         #[command(subcommand)]
         command: Option<PfCommand>,
-        /// Fuzzy query; forwards directly when it matches a single resource
+        #[arg(help = PF_QUERY_HELP)]
         query: Option<String>,
         /// Local port to bind (defaults to the remote port)
         #[arg(long)]
