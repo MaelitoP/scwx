@@ -95,10 +95,29 @@ fn start(
     let sockets = paths::sockets_dir()?;
     fs::create_dir_all(&sockets).with_context(|| format!("creating {}", sockets.display()))?;
     let socket = socket_path(&sockets, &name);
-    ensure!(
-        !socket.exists(),
-        "tunnel {name} already exists (scwx pf stop {name})"
-    );
+    if socket.exists() {
+        // A socket can outlive its master (kill -9, reboot); probe before
+        // refusing, or a stale file blocks this target forever.
+        let probe = TunnelRecord {
+            name: name.clone(),
+            local_port,
+            remote_port,
+            target: String::new(),
+            destination: "stale-probe".to_owned(),
+        };
+        match master_state(&sockets, &probe) {
+            MasterState::Alive => {
+                bail!("tunnel {name} is already running (scwx pf stop {name})")
+            }
+            MasterState::Dead => {
+                eprintln!("pruning stale socket for {name}");
+                remove(&sockets, &name);
+            }
+            MasterState::Unknown => {
+                bail!("cannot probe the existing socket for {name} (is ssh installed?)")
+            }
+        }
+    }
 
     let (argv, target_label, destination) = if target.kind.is_server() {
         let tunnel = ssh::Tunnel {
