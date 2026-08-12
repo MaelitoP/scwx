@@ -219,7 +219,7 @@ fn connect(
     let client = scw::Client::new(&credentials);
     let password = secrets::access_secret(&client, region, &project_id, &secret_name)?;
 
-    let local_port = free_local_port(10000 + remote_port)?;
+    let local_port = free_local_port(preferred_local_port(remote_port))?;
     let tunnel = ssh::Tunnel {
         local_port,
         target_host: host,
@@ -266,6 +266,12 @@ fn mysql_argv(local_port: u16, user: &str, schema: &str, mysql: MysqlOptions<'_>
     argv.extend(mysql.extra_args.iter().cloned());
     argv.push(schema.to_owned());
     argv
+}
+
+fn preferred_local_port(remote_port: u16) -> u16 {
+    u16::try_from(10_000 + u32::from(remote_port))
+        .unwrap_or(remote_port)
+        .max(1024)
 }
 
 fn free_local_port(preferred: u16) -> Result<u16> {
@@ -385,6 +391,14 @@ mod tests {
         );
         assert_eq!(plain.last().unwrap(), "s");
         assert!(!plain.contains(&"--execute".to_owned()));
+    }
+
+    #[test]
+    fn preferred_local_port_never_overflows() {
+        assert_eq!(preferred_local_port(3306), 13306);
+        assert_eq!(preferred_local_port(61000), 61000);
+        assert_eq!(preferred_local_port(65535), 65535);
+        assert_eq!(preferred_local_port(0), 10000);
     }
 
     #[test]
