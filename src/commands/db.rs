@@ -49,7 +49,9 @@ pub fn run(cli: &Cli, config: &Config, name: Option<&str>, mysql: MysqlOptions<'
         Selection::Cancelled => return Ok(()),
     };
 
-    if outcome != PickOutcome::Inline && tmux::inside_tmux() {
+    if let Some(placement) = outcome.placement()
+        && tmux::inside_tmux()
+    {
         let argv: Vec<OsString> = [env::current_exe()
             .context("resolving scwx path")?
             .into_os_string()]
@@ -69,12 +71,6 @@ pub fn run(cli: &Cli, config: &Config, name: Option<&str>, mysql: MysqlOptions<'
         .chain(std::iter::once(OsString::from("--")))
         .chain(mysql.extra_args.iter().map(OsString::from))
         .collect();
-        let placement = match outcome {
-            PickOutcome::Window => tmux::Placement::Window,
-            PickOutcome::Split => tmux::Placement::Split,
-            PickOutcome::VSplit => tmux::Placement::VSplit,
-            PickOutcome::Inline => unreachable!(),
-        };
         let title = format!("db:{}", db_key(target, config, env));
         return tmux::open(placement, &title, &argv);
     }

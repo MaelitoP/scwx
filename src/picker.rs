@@ -50,6 +50,19 @@ pub enum PickOutcome {
     Inline,
 }
 
+impl PickOutcome {
+    /// Where the session should land in tmux; None means the current
+    /// terminal.
+    pub fn placement(self) -> Option<crate::tmux::Placement> {
+        match self {
+            Self::Window => Some(crate::tmux::Placement::Window),
+            Self::Split => Some(crate::tmux::Placement::Below),
+            Self::VSplit => Some(crate::tmux::Placement::Beside),
+            Self::Inline => None,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Pick {
     pub index: usize,

@@ -9,8 +9,8 @@ use crate::exec::shell_join;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Placement {
     Window,
-    Split,
-    VSplit,
+    Below,
+    Beside,
 }
 
 pub fn inside_tmux() -> bool {
@@ -37,10 +37,10 @@ pub fn open(placement: Placement, title: &str, argv: &[OsString]) -> Result<()> 
         Placement::Window => {
             tmux.args(["new-window", "-n", title, &command]);
         }
-        Placement::Split => {
+        Placement::Below => {
             tmux.args(["split-window", "-v", &command]);
         }
-        Placement::VSplit => {
+        Placement::Beside => {
             tmux.args(["split-window", "-h", &command]);
         }
     }

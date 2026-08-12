@@ -71,13 +71,7 @@ fn open(
 ) -> Result<()> {
     let argv = ssh::session_argv(&resource.name, config, bastion)?;
     let title = resource.display_name(&config.naming);
-    let placement = match outcome {
-        PickOutcome::Inline => None,
-        PickOutcome::Window => Some(tmux::Placement::Window),
-        PickOutcome::Split => Some(tmux::Placement::Split),
-        PickOutcome::VSplit => Some(tmux::Placement::VSplit),
-    };
-    match placement {
+    match outcome.placement() {
         Some(placement) if tmux::inside_tmux() => tmux::open(placement, &title, &argv),
         _ => exec::replace(&argv),
     }
