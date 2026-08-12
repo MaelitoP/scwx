@@ -11,6 +11,7 @@ mod scw;
 mod secrets;
 mod sensitive;
 mod ssh;
+mod table;
 mod tmux;
 
 use anyhow::Result;

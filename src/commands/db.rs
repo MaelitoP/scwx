@@ -14,7 +14,7 @@ use crate::cli::Cli;
 use crate::config::{Config, Credentials};
 use crate::inventory::{Bastion, Environment, Resource, ResourceKind};
 use crate::picker::{self, PickOutcome, Selection};
-use crate::{cache, paths, scw, secrets, ssh, tmux};
+use crate::{cache, paths, scw, secrets, ssh, table, tmux};
 
 #[derive(Debug, Clone, Copy)]
 pub struct MysqlOptions<'a> {
@@ -156,24 +156,7 @@ fn render(databases: &[&Resource], config: &Config, env: Environment) -> Vec<Str
             ]
         })
         .collect();
-
-    let mut widths = [0usize; 4];
-    for row in &rows {
-        for (width, cell) in widths.iter_mut().zip(row) {
-            *width = (*width).max(cell.len());
-        }
-    }
-    rows.iter()
-        .map(|row| {
-            row.iter()
-                .zip(widths)
-                .map(|(cell, width)| format!("{cell:<width$}"))
-                .collect::<Vec<_>>()
-                .join("  ")
-                .trim_end()
-                .to_owned()
-        })
-        .collect()
+    table::columns(&rows)
 }
 
 fn database_user(config: &Config) -> Result<String> {

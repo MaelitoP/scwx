@@ -5,6 +5,7 @@ use anyhow::{Context, Result, bail};
 
 use crate::config::{Config, NamingSection};
 use crate::inventory::Resource;
+use crate::table;
 
 pub fn render_resources(resources: &[&Resource], config: &Config) -> Vec<String> {
     let rows: Vec<[String; 4]> = resources
@@ -21,25 +22,7 @@ pub fn render_resources(resources: &[&Resource], config: &Config) -> Vec<String>
             ]
         })
         .collect();
-
-    let mut widths = [0usize; 4];
-    for row in &rows {
-        for (width, cell) in widths.iter_mut().zip(row) {
-            *width = (*width).max(cell.len());
-        }
-    }
-
-    rows.iter()
-        .map(|row| {
-            row.iter()
-                .zip(widths)
-                .map(|(cell, width)| format!("{cell:<width$}"))
-                .collect::<Vec<_>>()
-                .join("  ")
-                .trim_end()
-                .to_owned()
-        })
-        .collect()
+    table::columns(&rows)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -4,7 +4,7 @@ use serde::Serialize;
 use crate::cli::Cli;
 use crate::config::Config;
 use crate::inventory::{Environment, Resource};
-use crate::{cache, output};
+use crate::{cache, output, table};
 
 #[derive(Debug, Serialize)]
 struct ResourceView<'a> {
@@ -95,44 +95,21 @@ pub fn run(cli: &Cli, config: &Config, json: bool, filter: NameFilter, cached: b
 }
 
 fn print_table(views: &[ResourceView<'_>]) -> Result<()> {
-    let rows: Vec<[String; 5]> = views
-        .iter()
-        .map(|view| {
-            [
-                view.display_name.clone(),
-                view.kind.to_owned(),
-                view.env.map(|env| env.to_string()).unwrap_or_default(),
-                view.zone.to_owned(),
-                view.endpoint_ip.unwrap_or_default().to_owned(),
-            ]
-        })
-        .collect();
+    let mut rows: Vec<[String; 5]> = vec![["NAME", "KIND", "ENV", "ZONE", "IP"].map(str::to_owned)];
+    rows.extend(views.iter().map(|view| {
+        [
+            view.display_name.clone(),
+            view.kind.to_owned(),
+            view.env.map(|env| env.to_string()).unwrap_or_default(),
+            view.zone.to_owned(),
+            view.endpoint_ip.unwrap_or_default().to_owned(),
+        ]
+    }));
 
-    let header = ["NAME", "KIND", "ENV", "ZONE", "IP"];
-    let mut widths = header.map(str::len);
-    for row in &rows {
-        for (width, cell) in widths.iter_mut().zip(row) {
-            *width = (*width).max(cell.len());
-        }
-    }
-
-    if !print_row(&header.map(str::to_owned), &widths)? {
-        return Ok(());
-    }
-    for row in &rows {
-        if !print_row(row, &widths)? {
+    for line in table::columns(&rows) {
+        if !output::emit(&line)? {
             return Ok(());
         }
     }
     Ok(())
-}
-
-fn print_row(cells: &[String; 5], widths: &[usize; 5]) -> Result<bool> {
-    let line = cells
-        .iter()
-        .zip(widths)
-        .map(|(cell, width)| format!("{cell:<width$}"))
-        .collect::<Vec<_>>()
-        .join("  ");
-    output::emit(line.trim_end())
 }
