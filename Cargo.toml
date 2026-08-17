@@ -1,6 +1,6 @@
 [package]
 name = "scwx"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 rust-version = "1.88"
 description = "Fast SSH, database and port-forward access to Scaleway infrastructure"
