@@ -14,6 +14,12 @@ pub(crate) const DB_NAME_HELP: &str =
 pub(crate) const PF_QUERY_HELP: &str =
     "Fuzzy query; forwards directly when it matches a single resource";
 
+const DB_AFTER_HELP: &str = "\
+Scripting (no tty): an exact resource name skips the picker, so one-shot \
+queries work without a terminal: scwx db <exact-name> -e 'SELECT 1'. Exact \
+names and roles come from `scwx ls --json` (the master carries the master \
+tag, 'Master' by default).";
+
 #[derive(Debug, Parser)]
 #[command(
     name = "scwx",
@@ -79,6 +85,7 @@ pub(crate) enum Command {
         query: Option<String>,
     },
     /// Pick a database and open a mysql session through a tunnel
+    #[command(after_help = DB_AFTER_HELP)]
     Db {
         #[arg(help = DB_NAME_HELP)]
         name: Option<String>,
