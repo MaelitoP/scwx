@@ -1,6 +1,7 @@
 use std::env;
 use std::ffi::OsString;
 use std::fs;
+use std::io::IsTerminal;
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
@@ -40,6 +41,12 @@ pub(crate) fn run(
         .collect();
     ensure!(!databases.is_empty(), "no databases tagged for env {env}");
 
+    // One-shot or piped output must land in this terminal: a tmux pane
+    // closes the moment mysql exits, taking the result with it.
+    let interactive = mysql.execute.is_none()
+        && !has_execute_flag(mysql.extra_args)
+        && std::io::stdin().is_terminal();
+
     let lines = render(&databases, config, env);
     let (target, outcome) = match picker::select(
         &databases,
@@ -47,7 +54,7 @@ pub(crate) fn run(
         &format!("Connect to database ({env})"),
         name,
         &config.naming,
-        true,
+        interactive,
     )? {
         Selection::Direct(target) => (target, PickOutcome::Inline),
         Selection::Picked(target, outcome) => (target, outcome),
@@ -82,6 +89,17 @@ pub(crate) fn run(
     }
 
     connect(target, env, config, &bastion, mysql)
+}
+
+/// Only -e/--execute makes mysql exit after printing, which is what loses
+/// output in a tmux pane; other flags keep mysql reading stdin, and piped
+/// stdin is detected separately.
+fn has_execute_flag(args: &[String]) -> bool {
+    args.iter().any(|arg| {
+        (arg.starts_with("-e") && !arg.starts_with("--"))
+            || arg == "--execute"
+            || arg.starts_with("--execute=")
+    })
 }
 
 fn render(databases: &[&Resource], config: &Config, env: Environment) -> Vec<String> {
@@ -305,6 +323,16 @@ mod tests {
         );
         assert_eq!(plain.last().unwrap(), "s");
         assert!(!plain.contains(&"--execute".to_owned()));
+    }
+
+    #[test]
+    fn execute_flags_are_detected_in_extra_args() {
+        assert!(has_execute_flag(&["-e".to_owned(), "SELECT 1".to_owned()]));
+        assert!(has_execute_flag(&["-eSELECT 1".to_owned()]));
+        assert!(has_execute_flag(&["--execute".to_owned()]));
+        assert!(has_execute_flag(&["--execute=SELECT 1".to_owned()]));
+        assert!(!has_execute_flag(&["--table".to_owned()]));
+        assert!(!has_execute_flag(&["--batch".to_owned()]));
     }
 
     #[test]
