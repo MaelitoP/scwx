@@ -13,6 +13,7 @@ pub(crate) const DB_NAME_HELP: &str =
     "Database name; picks interactively when omitted or ambiguous";
 pub(crate) const PF_QUERY_HELP: &str =
     "Fuzzy query; forwards directly when it matches a single resource";
+pub(crate) const MYSQL_ARGS_HELP: &str = "Extra arguments passed to mysql, e.g. -- --table";
 
 const DB_AFTER_HELP: &str = "\
 Scripting (no tty): an exact resource name skips the picker, so one-shot \
@@ -92,8 +93,7 @@ pub(crate) enum Command {
         /// Run a single query and exit (mysql --execute)
         #[arg(short = 'e', long)]
         execute: Option<String>,
-        /// Extra arguments passed to mysql, e.g. -- --table
-        #[arg(last = true)]
+        #[arg(last = true, help = MYSQL_ARGS_HELP)]
         mysql_args: Vec<String>,
     },
     /// Manage port-forward tunnels

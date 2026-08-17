@@ -53,7 +53,14 @@ fn with_dynamic_names(script: &str) -> String {
             &format!("{}:_default", crate::cli::PF_QUERY_HELP),
             &format!("{}:_scwx_pf_names", crate::cli::PF_QUERY_HELP),
         )
-        .replace("'::name:_default'", "'::name:_scwx_tunnel_names'");
+        .replace("'::name:_default'", "'::name:_scwx_tunnel_names'")
+        // The db name positional is optional, so _arguments also offers the
+        // mysql_args spec for the first word; _default there mixes files
+        // into the db names. A blank action completes nothing.
+        .replace(
+            &format!("{}:_default", crate::cli::MYSQL_ARGS_HELP),
+            &format!("{}: ", crate::cli::MYSQL_ARGS_HELP),
+        );
 
     // pf declares an optional query positional before its subcommands, so
     // zsh assigns the typed word to the query and never descends into
@@ -115,6 +122,8 @@ mod tests {
         assert!(script.contains("'::name:_scwx_tunnel_names'"));
         assert!(!script.contains("'::name:_default'"));
         assert!(script.contains("_scwx_server_names() {"));
+        assert!(script.contains(&format!("{}: ", crate::cli::MYSQL_ARGS_HELP)));
+        assert!(!script.contains(&format!("{}:_default", crate::cli::MYSQL_ARGS_HELP)));
 
         // pf: the query positional is merged into the subcommand position
         // and the state machine reads line[1], so `pf stop <TAB>` descends.
