@@ -372,12 +372,12 @@ struct IpamResource {
     name: Option<String>,
 }
 
-fn baremetal_private_ips(ips: Vec<IpamIp>) -> Vec<(String, String)> {
+fn private_ips(ips: Vec<IpamIp>) -> Vec<(String, String)> {
     ips.into_iter()
         .filter(|ip| !ip.is_ipv6)
         .filter_map(|ip| {
             let resource = ip.resource?;
-            if resource.kind != "baremetal_private_nic" {
+            if resource.kind != "baremetal_private_nic" && resource.kind != "lb_server" {
                 return None;
             }
             let name = resource.name?;
@@ -385,6 +385,25 @@ fn baremetal_private_ips(ips: Vec<IpamIp>) -> Vec<(String, String)> {
             Some((name, address))
         })
         .collect()
+}
+
+/// Baremetal endpoints only exist in ipam; a load balancer keeps its public
+/// ip and takes the private one only when it has none (private-only LBs).
+fn apply_private_ips(resources: &mut [Resource], private_ips: &[(String, String)]) {
+    for resource in resources {
+        let needs_ip = match resource.kind {
+            ResourceKind::Baremetal => true,
+            ResourceKind::Lb => resource.endpoint_ip.is_none(),
+            _ => false,
+        };
+        if !needs_ip {
+            continue;
+        }
+        resource.endpoint_ip = private_ips
+            .iter()
+            .find(|(name, _)| *name == resource.name)
+            .map(|(_, address)| address.clone());
+    }
 }
 
 impl Client {
@@ -454,16 +473,13 @@ impl Client {
         Ok(select_bastion(gateways, zone))
     }
 
-    fn list_baremetal_private_ips(
-        &self,
-        region: &str,
-    ) -> Result<Vec<(String, String)>, FetchError> {
+    fn list_private_ips(&self, region: &str) -> Result<Vec<(String, String)>, FetchError> {
         let ips = self.get_paged::<IpamList>(
             &format!("/ipam/v1/regions/{region}/ips"),
             "page_size",
             &[],
         )?;
-        Ok(baremetal_private_ips(ips))
+        Ok(private_ips(ips))
     }
 }
 
@@ -555,12 +571,7 @@ pub(crate) fn fetch_inventory(credentials: &Credentials, config: &Config) -> Res
             .collect();
         let ipam_tasks: Vec<_> = regions
             .iter()
-            .map(|region| {
-                (
-                    region,
-                    scope.spawn(|| client.list_baremetal_private_ips(region)),
-                )
-            })
+            .map(|region| (region, scope.spawn(|| client.list_private_ips(region))))
             .collect();
 
         let joined = resource_tasks
@@ -604,14 +615,7 @@ pub(crate) fn fetch_inventory(credentials: &Credentials, config: &Config) -> Res
                 }
             }
         }
-        for resource in &mut resources {
-            if resource.kind == ResourceKind::Baremetal {
-                resource.endpoint_ip = private_ips
-                    .iter()
-                    .find(|(name, _)| *name == resource.name)
-                    .map(|(_, address)| address.clone());
-            }
-        }
+        apply_private_ips(&mut resources, &private_ips);
 
         if resources.is_empty() && !complete {
             bail!("inventory fetch failed for every zone");
@@ -723,7 +727,7 @@ mod tests {
     }
 
     #[test]
-    fn ipam_keeps_ipv4_baremetal_nics_and_strips_the_cidr() {
+    fn ipam_keeps_ipv4_baremetal_nics_and_lbs_and_strips_the_cidr() {
         let list: IpamList = serde_json::from_str(
             r#"{"ips": [
                 {"address": "172.16.8.11/22", "is_ipv6": false,
@@ -732,13 +736,46 @@ mod tests {
                  "resource": {"type": "baremetal_private_nic", "name": "db-master-1"}},
                 {"address": "172.16.8.12/22", "is_ipv6": false,
                  "resource": {"type": "instance_private_nic", "name": "web-1"}},
+                {"address": "172.16.16.149/22", "is_ipv6": false,
+                 "resource": {"type": "lb_server", "name": "historical-int-lb"}},
                 {"address": "172.16.8.13/22", "is_ipv6": false, "resource": null}
             ]}"#,
         )
         .unwrap();
 
-        let ips = baremetal_private_ips(list.into_parts().0);
-        assert_eq!(ips, [("db-master-1".to_owned(), "172.16.8.11".to_owned())]);
+        let ips = private_ips(list.into_parts().0);
+        assert_eq!(
+            ips,
+            [
+                ("db-master-1".to_owned(), "172.16.8.11".to_owned()),
+                ("historical-int-lb".to_owned(), "172.16.16.149".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn private_ips_fill_baremetal_and_only_ipless_lbs() {
+        let mut baremetal = resource("bm-1");
+        baremetal.kind = ResourceKind::Baremetal;
+        let mut private_lb = resource("int-lb");
+        private_lb.kind = ResourceKind::Lb;
+        let mut public_lb = resource("pub-lb");
+        public_lb.kind = ResourceKind::Lb;
+        public_lb.endpoint_ip = Some("51.15.1.2".to_owned());
+        let instance = resource("web-1");
+        let mut resources = vec![baremetal, private_lb, public_lb, instance];
+
+        let ips: Vec<(String, String)> = ["bm-1", "int-lb", "pub-lb", "web-1"]
+            .iter()
+            .enumerate()
+            .map(|(i, name)| ((*name).to_owned(), format!("172.16.16.{i}")))
+            .collect();
+        apply_private_ips(&mut resources, &ips);
+
+        assert_eq!(resources[0].endpoint_ip.as_deref(), Some("172.16.16.0"));
+        assert_eq!(resources[1].endpoint_ip.as_deref(), Some("172.16.16.1"));
+        assert_eq!(resources[2].endpoint_ip.as_deref(), Some("51.15.1.2"));
+        assert_eq!(resources[3].endpoint_ip, None);
     }
 
     fn resource(name: &str) -> Resource {
