@@ -24,7 +24,7 @@
           cargoLock.lockFile = ./Cargo.lock;
 
           nativeBuildInputs = [ pkgs.installShellFiles ];
-          buildInputs = pkgs.lib.optionals pkgs.stdenv.isDarwin [ pkgs.libiconv ];
+          buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.libiconv ];
 
           postInstall = ''
             installShellCompletion --cmd scwx \
