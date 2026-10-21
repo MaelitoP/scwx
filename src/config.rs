@@ -16,7 +16,7 @@ use crate::sensitive::Sensitive;
 pub(crate) struct Config {
     pub(crate) scaleway: ScalewayLocations,
     pub(crate) bastion: BastionDefaults,
-    pub(crate) ssh: SshIdentity,
+    pub(crate) ssh: SshSettings,
     pub(crate) tags: TagConventions,
     pub(crate) db: DatabaseRules,
     pub(crate) naming: NamingRules,
@@ -73,16 +73,15 @@ impl Default for BastionDefaults {
 
 #[derive(Debug, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub(crate) struct SshIdentity {
+pub(crate) struct SshSettings {
     pub(crate) user: String,
     /// Private key passed to ssh with -i; ssh's own defaults apply when unset.
     pub(crate) key: Option<String>,
-    /// Private DNS domain per environment, appended to server names: the
-    /// bastion resolves only <server>.<private network>.internal.
+    /// The bastion resolves servers only as `<server>.<private network>.internal`.
     pub(crate) domains: HashMap<Environment, String>,
 }
 
-impl Default for SshIdentity {
+impl Default for SshSettings {
     fn default() -> Self {
         Self {
             user: "root".to_owned(),
@@ -275,13 +274,10 @@ prod = "prod-net.internal"
         assert_eq!(config.db.secret_name_template, "{db}-{user}-PWD-{env}");
         assert_eq!(config.naming.strip_prefixes, ["platform-ingestor-"]);
         assert_eq!(
-            config
-                .ssh
-                .domains
-                .get(&Environment::Prod)
-                .map(String::as_str),
-            Some("prod-net.internal")
+            config.ssh.domains,
+            HashMap::from([(Environment::Prod, "prod-net.internal".to_owned())])
         );
+        assert_eq!(config.ssh.user, "root");
         assert_eq!(config.bastion.user, "bastion");
     }
 

@@ -51,13 +51,14 @@ pub(crate) fn is_safe_host_token(token: &str) -> bool {
 }
 
 pub(crate) fn host_name(resource: &Resource, config: &Config) -> String {
-    let domain = resource
+    let name = &resource.name;
+    let Some(domain) = resource
         .env(&config.tags)
-        .and_then(|env| config.ssh.domains.get(&env));
-    match domain {
-        Some(domain) => format!("{}.{domain}", resource.name),
-        None => resource.name.clone(),
-    }
+        .and_then(|env| config.ssh.domains.get(&env))
+    else {
+        return name.clone();
+    };
+    format!("{name}.{domain}")
 }
 
 /// An ssh invocation whose destination stays explicit until the end, so
@@ -159,7 +160,12 @@ fn through_bastion(config: &Config, bastion: &Bastion, destination: String) -> R
 }
 
 /// Interactive session to a server, reached by name through the bastion.
-pub(crate) fn session(host: &str, config: &Config, bastion: &Bastion) -> Result<SshCommand> {
+pub(crate) fn session(
+    resource: &Resource,
+    config: &Config,
+    bastion: &Bastion,
+) -> Result<SshCommand> {
+    let host = host_name(resource, config);
     through_bastion(config, bastion, format!("{}@{host}", config.ssh.user))
 }
 
@@ -216,6 +222,19 @@ pub(crate) fn server_tunnel(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::inventory::{Environment, ResourceKind};
+
+    fn server(name: &str, tags: &[&str]) -> Resource {
+        Resource {
+            kind: ResourceKind::Instance,
+            id: "id".to_owned(),
+            name: name.to_owned(),
+            zone: "fr-par-1".to_owned(),
+            tags: tags.iter().map(|t| (*t).to_owned()).collect(),
+            endpoint_ip: None,
+            endpoint_port: None,
+        }
+    }
 
     fn bastion() -> Bastion {
         Bastion {
@@ -225,9 +244,13 @@ mod tests {
         }
     }
 
-    fn config_with_key() -> Config {
+    fn config_with_key_and_prod_domain() -> Config {
         let mut config = Config::default();
         config.ssh.key = Some("/keys/id_ed25519".to_owned());
+        config
+            .ssh
+            .domains
+            .insert(Environment::Prod, "prod-net.internal".to_owned());
         config
     }
 
@@ -238,15 +261,19 @@ mod tests {
     }
 
     #[test]
-    fn session_jumps_through_the_bastion_with_the_key_on_both_hops() {
+    fn session_targets_the_env_domain_through_the_bastion_with_the_key_on_both_hops() {
         let argv = as_strings(
-            session("web-1", &config_with_key(), &bastion())
-                .unwrap()
-                .into_argv(),
+            session(
+                &server("web-1", &["Env:Prod"]),
+                &config_with_key_and_prod_domain(),
+                &bastion(),
+            )
+            .unwrap()
+            .into_argv(),
         );
 
         assert_eq!(argv[0], "ssh");
-        assert_eq!(argv.last().unwrap(), "root@web-1");
+        assert_eq!(argv.last().unwrap(), "root@web-1.prod-net.internal");
         assert!(argv.contains(&"/keys/id_ed25519".to_owned()));
         assert!(
             argv.iter()
@@ -267,7 +294,7 @@ mod tests {
     #[test]
     fn session_without_key_leaves_identity_to_ssh() {
         let argv = as_strings(
-            session("web-1", &Config::default(), &bastion())
+            session(&server("web-1", &[]), &Config::default(), &bastion())
                 .unwrap()
                 .into_argv(),
         );
@@ -332,29 +359,17 @@ mod tests {
 
     #[test]
     fn host_name_stays_bare_without_a_domain_for_the_env() {
-        use crate::inventory::{Environment, ResourceKind};
-
-        let mut config = Config::default();
-        config
-            .ssh
-            .domains
-            .insert(Environment::Prod, "prod-net.internal".to_owned());
-        let resource = |tags: &[&str]| Resource {
-            kind: ResourceKind::Instance,
-            id: "id".to_owned(),
-            name: "web-1".to_owned(),
-            zone: "fr-par-1".to_owned(),
-            tags: tags.iter().map(|t| (*t).to_owned()).collect(),
-            endpoint_ip: None,
-            endpoint_port: None,
-        };
-
+        let config = config_with_key_and_prod_domain();
         assert_eq!(
-            host_name(&resource(&["Env:Prod"]), &config),
-            "web-1.prod-net.internal"
+            host_name(&server("web-1", &["Env:Beta"]), &config),
+            "web-1",
+            "env without a domain"
         );
-        assert_eq!(host_name(&resource(&["Env:Beta"]), &config), "web-1");
-        assert_eq!(host_name(&resource(&[]), &config), "web-1");
+        assert_eq!(
+            host_name(&server("web-1", &[]), &config),
+            "web-1",
+            "no env tag"
+        );
     }
 
     #[test]

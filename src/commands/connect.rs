@@ -71,7 +71,7 @@ fn open_session(
     config: &Config,
     bastion: &crate::inventory::Bastion,
 ) -> Result<()> {
-    let argv = ssh::session(&ssh::host_name(resource, config), config, bastion)?.into_argv();
+    let argv = ssh::session(resource, config, bastion)?.into_argv();
     let title = resource.display_name(&config.naming).to_owned();
     match outcome.placement() {
         Some(placement) if tmux::inside_tmux() => tmux::open(placement, &title, &argv),

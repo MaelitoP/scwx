@@ -113,7 +113,7 @@ mod tests {
     }
 
     #[test]
-    fn renders_bastion_and_deduplicated_hosts_with_their_env_domain() {
+    fn renders_bastion_and_hosts_deduplicated_and_qualified_by_env_domain() {
         let mut config = Config::default();
         config.naming.strip_prefixes = vec!["platform-ingestor-".to_owned()];
         config.ssh.key = Some("/keys/id_ed25519".to_owned());
