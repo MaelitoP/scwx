@@ -81,7 +81,8 @@ fn render(servers: &[&Resource], bastion: &Bastion, config: &Config) -> Result<(
     let mut seen = HashSet::new();
     for server in servers {
         let alias = server.display_name(&config.naming);
-        if !is_safe_host_token(alias) || !is_safe_host_token(&server.name) {
+        let host_name = ssh::host_name(server, config);
+        if !is_safe_host_token(alias) || !is_safe_host_token(&host_name) {
             eprintln!(
                 "warning: skipping {}: unsafe name for ssh config",
                 server.name
@@ -93,8 +94,8 @@ fn render(servers: &[&Resource], bastion: &Bastion, config: &Config) -> Result<(
         }
         write!(
             out,
-            "\nHost {alias}\n    HostName {}\n    User {}\n    ProxyJump {BASTION_ALIAS}\n{key_lines}",
-            server.name, config.ssh.user
+            "\nHost {alias}\n    HostName {host_name}\n    User {}\n    ProxyJump {BASTION_ALIAS}\n{key_lines}",
+            config.ssh.user
         )?;
         out.push_str(&ssh::option_config_lines(&ssh::HARDENING_OPTIONS));
     }
@@ -103,39 +104,46 @@ fn render(servers: &[&Resource], bastion: &Bastion, config: &Config) -> Result<(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::inventory::ResourceKind;
+    use std::collections::HashMap;
 
-    fn server(name: &str) -> Resource {
+    use super::*;
+    use crate::inventory::{Environment, ResourceKind};
+
+    fn server(name: &str, tags: &[&str]) -> Resource {
         Resource {
             kind: ResourceKind::Instance,
             id: "id".to_owned(),
             name: name.to_owned(),
             zone: "fr-par-1".to_owned(),
-            tags: vec![],
+            tags: tags.iter().map(|t| (*t).to_owned()).collect(),
             endpoint_ip: None,
             endpoint_port: None,
         }
     }
 
     #[test]
-    fn renders_bastion_and_deduplicated_hosts() {
+    fn renders_bastion_and_deduplicated_hosts_with_their_env_domain() {
         let mut config = Config::default();
         config.naming.strip_prefixes = vec!["platform-ingestor-".to_owned()];
         config.ssh.key = Some("/keys/id_ed25519".to_owned());
+        config.ssh.domains = HashMap::from([
+            (Environment::Prod, "prod-net.internal".to_owned()),
+            (Environment::Beta, "beta-net.internal".to_owned()),
+        ]);
         let bastion = Bastion {
             ip: "5.6.7.8".to_owned(),
             port: 61000,
             zone: "fr-par-1".to_owned(),
         };
-        let a = server("platform-ingestor-api-0");
-        let dup1 = server("osrs-master-1");
-        let dup2 = server("osrs-master-1");
-        let evil = server("bad name\n  ProxyCommand evil");
-        let servers = vec![&a, &dup1, &dup2, &evil];
+        let prod = server("platform-ingestor-api-0", &["Env:Prod"]);
+        let beta = server("platform-ingestor-beta-api-0", &["Env:Beta"]);
+        let dup1 = server("osrs-master-1", &[]);
+        let dup2 = server("osrs-master-1", &[]);
+        let evil = server("bad name\n  ProxyCommand evil", &[]);
+        let servers = vec![&prod, &beta, &dup1, &dup2, &evil];
 
         let (rendered, host_count) = render(&servers, &bastion, &config).unwrap();
-        assert_eq!(host_count, 2);
+        assert_eq!(host_count, 3);
         assert!(!rendered.contains("evil"));
 
         assert_eq!(
@@ -154,7 +162,17 @@ Host scwx-bastion
     LogLevel ERROR
 
 Host api-0
-    HostName platform-ingestor-api-0
+    HostName platform-ingestor-api-0.prod-net.internal
+    User root
+    ProxyJump scwx-bastion
+    IdentityFile /keys/id_ed25519
+    IdentitiesOnly yes
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    LogLevel ERROR
+
+Host beta-api-0
+    HostName platform-ingestor-beta-api-0.beta-net.internal
     User root
     ProxyJump scwx-bastion
     IdentityFile /keys/id_ed25519

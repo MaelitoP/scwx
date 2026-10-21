@@ -113,9 +113,10 @@ fn start(
     }
 
     let (command, target_label) = if target.kind.is_server() {
+        let host = ssh::host_name(target, config);
         let tunnel = ssh::Tunnel {
             local_port,
-            target_host: &target.name,
+            target_host: &host,
             remote_port,
         };
         (

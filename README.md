@@ -26,6 +26,10 @@ Optional settings live in `~/.config/scwx/config.toml`. Everything has a default
 [ssh]
 key = "~/.local/share/ssh/id_ed25519_scaleway"
 
+[ssh.domains]
+prod = "my-prod-network.internal"
+beta = "my-beta-network.internal"
+
 [naming]
 strip_prefixes = ["platform-ingestor-"]
 
@@ -52,6 +56,8 @@ Include config.d/scaleway
 ```
 
 After that, plain `ssh`, `scp` and IDE remote sessions work on every server name, with tab completion.
+
+The bastion resolves servers by their private DNS name, `<server>.<private network>.internal`. `ssh.domains` maps each environment (from the `Env:` tag) to that suffix; a server whose environment has no entry keeps its bare name.
 
 ## Commands
 

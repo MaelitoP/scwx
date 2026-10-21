@@ -6,7 +6,7 @@ use std::path::Path;
 use anyhow::Result;
 
 use crate::config::Config;
-use crate::inventory::Bastion;
+use crate::inventory::{Bastion, Resource};
 use crate::paths;
 use crate::shell::shell_join;
 
@@ -38,6 +38,18 @@ pub(crate) fn option_config_lines(options: &[(&str, &str)]) -> String {
         .iter()
         .map(|(key, value)| format!("    {key} {value}\n"))
         .collect()
+}
+
+/// The name the bastion resolves: the private DNS name when the server's
+/// environment has a domain configured, the bare name otherwise.
+pub(crate) fn host_name(resource: &Resource, config: &Config) -> String {
+    let domain = resource
+        .env(&config.tags)
+        .and_then(|env| config.ssh.domains.get(&env));
+    match domain {
+        Some(domain) => format!("{}.{domain}", resource.name),
+        None => resource.name.clone(),
+    }
 }
 
 /// An ssh invocation whose destination stays explicit until the end, so
@@ -295,6 +307,33 @@ mod tests {
         assert_eq!(argv[socket_flag + 1], "/tmp/t.sock");
         assert!(argv.contains(&"-f".to_owned()));
         assert!(argv.contains(&"-M".to_owned()));
+    }
+
+    #[test]
+    fn host_name_stays_bare_without_a_domain_for_the_env() {
+        use crate::inventory::{Environment, ResourceKind};
+
+        let mut config = Config::default();
+        config
+            .ssh
+            .domains
+            .insert(Environment::Prod, "prod-net.internal".to_owned());
+        let resource = |tags: &[&str]| Resource {
+            kind: ResourceKind::Instance,
+            id: "id".to_owned(),
+            name: "web-1".to_owned(),
+            zone: "fr-par-1".to_owned(),
+            tags: tags.iter().map(|t| (*t).to_owned()).collect(),
+            endpoint_ip: None,
+            endpoint_port: None,
+        };
+
+        assert_eq!(
+            host_name(&resource(&["Env:Prod"]), &config),
+            "web-1.prod-net.internal"
+        );
+        assert_eq!(host_name(&resource(&["Env:Beta"]), &config), "web-1");
+        assert_eq!(host_name(&resource(&[]), &config), "web-1");
     }
 
     #[test]

@@ -77,6 +77,9 @@ pub(crate) struct SshIdentity {
     pub(crate) user: String,
     /// Private key passed to ssh with -i; ssh's own defaults apply when unset.
     pub(crate) key: Option<String>,
+    /// Private DNS domain per environment, appended to server names: the
+    /// bastion resolves only <server>.<private network>.internal.
+    pub(crate) domains: HashMap<Environment, String>,
 }
 
 impl Default for SshIdentity {
@@ -84,6 +87,7 @@ impl Default for SshIdentity {
         Self {
             user: "root".to_owned(),
             key: None,
+            domains: HashMap::new(),
         }
     }
 }
@@ -247,6 +251,9 @@ secret_project_id = "11111111-2222-3333-4444-555555555555"
 
 [naming]
 strip_prefixes = ["platform-ingestor-"]
+
+[ssh.domains]
+prod = "prod-net.internal"
 "#,
         );
         let config = Config::load(&path).unwrap();
@@ -258,6 +265,14 @@ strip_prefixes = ["platform-ingestor-"]
         );
         assert_eq!(config.db.secret_name_template, "{db}-{user}-PWD-{env}");
         assert_eq!(config.naming.strip_prefixes, ["platform-ingestor-"]);
+        assert_eq!(
+            config
+                .ssh
+                .domains
+                .get(&Environment::Prod)
+                .map(String::as_str),
+            Some("prod-net.internal")
+        );
         assert_eq!(config.bastion.user, "bastion");
     }
 
