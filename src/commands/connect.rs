@@ -1,11 +1,13 @@
-use anyhow::{Result, ensure};
+use std::fs;
+
+use anyhow::{Context, Result, ensure};
 
 use crate::cli::Scope;
 use crate::config::Config;
 use crate::inventory::Resource;
 use crate::inventory::{Inventory, ResourceKind};
 use crate::picker::{self, PickOutcome, Selection};
-use crate::{cache, exec, ssh, tmux};
+use crate::{cache, exec, paths, ssh, tmux};
 
 pub(crate) fn run(scope: &Scope, config: &Config, query: Option<&str>) -> Result<()> {
     let inventory = cache::load_or_fetch(scope.freshness, config)?;
@@ -72,6 +74,9 @@ fn open_session(
     bastion: &crate::inventory::Bastion,
 ) -> Result<()> {
     let argv = ssh::session(resource, config, bastion)?.into_argv();
+    // With ControlMaster auto, ssh exits when the ControlPath directory is missing.
+    let sockets = paths::sockets_dir()?;
+    fs::create_dir_all(&sockets).with_context(|| format!("creating {}", sockets.display()))?;
     let title = resource.display_name(&config.naming).to_owned();
     match outcome.placement() {
         Some(placement) if tmux::inside_tmux() => tmux::open(placement, &title, &argv),

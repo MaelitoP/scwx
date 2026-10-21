@@ -1,10 +1,9 @@
 //! ssh invocations: sessions and tunnels through the bastion.
 
 use std::ffi::OsString;
-use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 use crate::config::Config;
 use crate::inventory::{Bastion, Resource};
@@ -143,12 +142,10 @@ fn control_path(sockets: &Path) -> String {
 }
 
 fn through_bastion(config: &Config, bastion: &Bastion, destination: String) -> Result<SshCommand> {
-    let sockets = paths::sockets_dir()?;
-    fs::create_dir_all(&sockets).with_context(|| format!("creating {}", sockets.display()))?;
     let key = identity_key(config)?;
     let mut command = SshCommand::new(destination);
     command.push_args(base_options(key.as_deref()));
-    command.push_args(["-o".to_owned(), control_path(&sockets)]);
+    command.push_args(["-o".to_owned(), control_path(&paths::sockets_dir()?)]);
     command.push_args([
         "-o".to_owned(),
         format!(
