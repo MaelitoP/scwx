@@ -5,7 +5,7 @@ use std::env;
 use std::fs;
 use std::path::Path;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, ensure};
 use serde::Deserialize;
 
 use crate::inventory::Environment;
@@ -155,7 +155,16 @@ impl Config {
         }
         let raw = fs::read_to_string(path)
             .with_context(|| format!("reading config {}", path.display()))?;
-        toml::from_str(&raw).with_context(|| format!("parsing config {}", path.display()))
+        let config: Self =
+            toml::from_str(&raw).with_context(|| format!("parsing config {}", path.display()))?;
+        for (env, domain) in &config.ssh.domains {
+            ensure!(
+                crate::ssh::is_safe_host_token(domain),
+                "ssh.domains.{env}: invalid domain {domain:?} in {}",
+                path.display()
+            );
+        }
+        Ok(config)
     }
 }
 
@@ -279,6 +288,17 @@ prod = "prod-net.internal"
     #[test]
     fn unknown_config_key_is_rejected() {
         let path = write_temp("unknown", "[bastion]\nuserr = \"x\"\n");
+        let result = Config::load(&path);
+        fs::remove_file(&path).unwrap();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn unsafe_ssh_domain_is_rejected() {
+        let path = write_temp(
+            "domain",
+            "[ssh.domains]\nprod = \"net.internal\\n  ProxyCommand evil\"\n",
+        );
         let result = Config::load(&path);
         fs::remove_file(&path).unwrap();
         assert!(result.is_err());

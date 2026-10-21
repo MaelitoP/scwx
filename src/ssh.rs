@@ -41,8 +41,15 @@ pub(crate) fn option_config_lines(options: &[(&str, &str)]) -> String {
         .collect()
 }
 
-/// The name the bastion resolves: the private DNS name when the server's
-/// environment has a domain configured, the bare name otherwise.
+/// A name lands verbatim on a Host/HostName line: anything outside this set
+/// could turn into a glob pattern or, with whitespace, extra directives.
+pub(crate) fn is_safe_host_token(token: &str) -> bool {
+    !token.is_empty()
+        && token
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+}
+
 pub(crate) fn host_name(resource: &Resource, config: &Config) -> String {
     let domain = resource
         .env(&config.tags)
