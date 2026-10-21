@@ -1,9 +1,10 @@
 //! ssh invocations: sessions and tunnels through the bastion.
 
 use std::ffi::OsString;
+use std::fs;
 use std::path::Path;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use crate::config::Config;
 use crate::inventory::{Bastion, Resource};
@@ -127,10 +128,19 @@ fn proxy_command(bastion: &Bastion, config: &Config, key: Option<&str>) -> Strin
     shell_join(&argv)
 }
 
+/// A user ControlPath built from %h/%n overflows the 104-byte unix socket
+/// limit once the destination is a private DNS name; %C is fixed-length.
+fn control_path(sockets: &Path) -> String {
+    format!("ControlPath={}/%C", sockets.display())
+}
+
 fn through_bastion(config: &Config, bastion: &Bastion, destination: String) -> Result<SshCommand> {
+    let sockets = paths::sockets_dir()?;
+    fs::create_dir_all(&sockets).with_context(|| format!("creating {}", sockets.display()))?;
     let key = identity_key(config)?;
     let mut command = SshCommand::new(destination);
     command.push_args(base_options(key.as_deref()));
+    command.push_args(["-o".to_owned(), control_path(&sockets)]);
     command.push_args([
         "-o".to_owned(),
         format!(
@@ -231,6 +241,10 @@ mod tests {
         assert_eq!(argv[0], "ssh");
         assert_eq!(argv.last().unwrap(), "root@web-1");
         assert!(argv.contains(&"/keys/id_ed25519".to_owned()));
+        assert!(
+            argv.iter()
+                .any(|arg| arg.starts_with("ControlPath=") && arg.ends_with("/%C"))
+        );
         let proxy = argv
             .iter()
             .find(|arg| arg.starts_with("ProxyCommand="))
